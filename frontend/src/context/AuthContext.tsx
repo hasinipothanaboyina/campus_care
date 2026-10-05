@@ -232,13 +232,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    // Immediately clear local state so the user is signed out of the UI instantly
+    setUser(null);
+    localStorage.removeItem('campuscare_user');
+    
     try {
-      await supabase.auth.signOut();
+      // Run Supabase signout in the background so it doesn't block navigation
+      supabase.auth.signOut().catch(console.error);
     } catch (e) {
       console.error(e);
-    } finally {
-      setUser(null);
-      localStorage.removeItem('campuscare_user');
     }
   };
 
