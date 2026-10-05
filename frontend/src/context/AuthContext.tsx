@@ -134,6 +134,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
           emailToAuth = `${cleanId}@campuscare.edu`;
         }
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({ email: emailToAuth, password });
 
       if (error) {
