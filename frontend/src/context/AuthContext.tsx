@@ -185,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+    const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -196,6 +196,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             full_name: data.fullName,
             student_id: data.studentId,
             role: 'STUDENT',
+            department: data.department,
+            year: data.year,
+            section: data.section
           },
         },
       });
@@ -205,24 +208,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: authError.message };
       }
 
-      const userId = authData.user?.id || `usr-student-${Date.now()}`;
-
-      await supabase.from('profiles').insert([
-        {
-          id: userId,
-          full_name: data.fullName,
-          email: data.email,
-          role: 'STUDENT',
-          student_id: data.studentId,
-          department: data.department,
-          year: data.year,
-          section: data.section,
-          is_approved: false, // Explicitly pending
-        },
-      ]);
-
       // Sign out immediately because they must be approved by admin before logging in
-      await supabase.auth.signOut();
+      try { await supabase.auth.signOut(); } catch (e) {}
       
       setIsLoading(false);
       return { success: true };
@@ -309,5 +296,6 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 
