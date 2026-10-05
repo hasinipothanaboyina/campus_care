@@ -31,9 +31,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load session from Supabase & Local Storage
   useEffect(() => {
+    let isMounted = true;
     const initializeAuth = async () => {
       try {
         setIsLoading(true);
+
+        // Safety timeout to prevent infinite loading screens
+        setTimeout(() => {
+          if (isMounted) setIsLoading(false);
+        }, 2000);
 
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -50,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         console.error('Error initializing Auth:', err);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
 
@@ -66,6 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
