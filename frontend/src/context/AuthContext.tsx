@@ -185,37 +185,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-    const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+      const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.fullName,
-            student_id: data.studentId,
-            role: 'STUDENT',
-            department: data.department,
-            year: data.year,
-            section: data.section
+
+    const registerProcess = async () => {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.fullName,
+              student_id: data.studentId,
+              role: 'STUDENT',
+              department: data.department,
+              year: data.year,
+              section: data.section
+            },
           },
-        },
-      });
+        });
 
-      if (authError) {
-        setIsLoading(false);
-        return { success: false, error: authError.message };
+        if (authError) {
+          return { success: false, error: authError.message };
+        }
+
+        try { await supabase.auth.signOut(); } catch (e) {}
+        
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Registration failed.' };
       }
+    };
 
-      // Sign out immediately because they must be approved by admin before logging in
-      try { await supabase.auth.signOut(); } catch (e) {}
-      
+    try {
+      const result = await Promise.race([
+        registerProcess(),
+        new Promise<{ success: boolean; error?: string }>((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timed out. You have a broken browser tab holding a memory lock. Please completely close all your browser windows and try again in an Incognito window!')), 6000)
+        )
+      ]);
       setIsLoading(false);
-      return { success: true };
-    } catch (err: any) {
+      return result;
+    } catch (error: any) {
       setIsLoading(false);
-      return { success: false, error: err.message || 'Registration failed.' };
+      return { success: false, error: error.message };
     }
   };
 
@@ -296,6 +309,7 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 
 
