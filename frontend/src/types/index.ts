@@ -10,6 +10,8 @@ export interface UserProfile {
   section?: string;
   role: UserRole;
   avatarUrl?: string;
+  isApproved?: boolean;
+  lastLogin?: string;
   createdAt: string;
 }
 

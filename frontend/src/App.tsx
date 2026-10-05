@@ -32,6 +32,7 @@ import { ResolutionManagementPage } from './pages/admin/ResolutionManagementPage
 import { AnalyticsPage } from './pages/admin/AnalyticsPage';
 import { AdminNotificationsPage } from './pages/admin/AdminNotificationsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
+import { StudentManagementPage } from './pages/admin/StudentManagementPage';
 
 export default function App() {
   return (
@@ -73,6 +74,7 @@ export default function App() {
               }
             >
               <Route index element={<AdminDashboard />} />
+              <Route path="students" element={<StudentManagementPage />} />
               <Route path="submissions" element={<AllSubmissionsPage />} />
               <Route path="priority-queue" element={<PriorityQueuePage />} />
               <Route path="recurring-issues" element={<RecurringIssuesPage />} />

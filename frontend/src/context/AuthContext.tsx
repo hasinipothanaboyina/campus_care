@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const fetchProfile = async (userId: string, email: string) => {
+  const fetchProfile = async (userId: string, email: string): Promise<UserProfile | null> => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -89,10 +89,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           year: data.year,
           section: data.section,
           avatarUrl: data.avatar_url,
+          isApproved: data.is_approved,
+          lastLogin: data.last_login,
           createdAt: data.created_at,
         };
         setUser(u);
         localStorage.setItem('campuscare_user', JSON.stringify(u));
+        return u;
       } else {
         const isDefaultAdmin = email.toLowerCase().includes('admin');
         const fallbackUser: UserProfile = {
@@ -101,13 +104,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email,
           role: isDefaultAdmin ? 'ADMIN' : 'STUDENT',
           studentId: isDefaultAdmin ? 'ADM-001' : '2026-CSE-091',
+          isApproved: true,
           createdAt: new Date().toISOString(),
         };
         setUser(fallbackUser);
         localStorage.setItem('campuscare_user', JSON.stringify(fallbackUser));
+        return fallbackUser;
       }
     } catch (e) {
       console.error('Error fetching profile:', e);
+      return null;
     }
   };
 
@@ -116,20 +122,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       let emailToAuth = identifier.trim();
 
-      // If user typed Student Roll Number or Admin ID instead of email
       if (!emailToAuth.includes('@')) {
-        // Query profile database by student_id
         try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('student_id', emailToAuth)
-            .maybeSingle();
-
-          if (data?.email) {
-            emailToAuth = data.email;
-          } else {
-            // Standard normalized fallback email for roll number / Admin ID
+          const { data } = await supabase.from('profiles').select('email').eq('student_id', emailToAuth).maybeSingle();
+          if (data?.email) emailToAuth = data.email;
+          else {
             const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
             emailToAuth = `${cleanId}@campuscare.edu`;
           }
@@ -139,35 +136,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Authenticate with Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: emailToAuth,
-        password,
-      });
+      // Hardcoded Admin Principal bypass as requested
+      if (emailToAuth === 'principal.srgec@gmail.com' && password === 'principal@123') {
+        const adminProfile: UserProfile = {
+          id: 'admin-principal-fixed',
+          fullName: 'Principal Admin',
+          email: 'principal.srgec@gmail.com',
+          role: 'ADMIN',
+          studentId: 'PRINCIPAL',
+          department: 'Administration',
+          isApproved: true,
+          lastLogin: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        setUser(adminProfile);
+        localStorage.setItem('campuscare_user', JSON.stringify(adminProfile));
+        setIsLoading(false);
+        return { success: true };
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email: emailToAuth, password });
 
       if (error) {
-        if (password.length >= 4) {
-          const role: UserRole = requestedRole || (identifier.toLowerCase().includes('admin') || identifier.toLowerCase().includes('adm') ? 'ADMIN' : 'STUDENT');
-          const localUser: UserProfile = {
-            id: `usr-${Date.now()}`,
-            fullName: role === 'ADMIN' ? 'CMC Operations Admin' : 'Student User',
-            email: emailToAuth,
-            role,
-            studentId: identifier,
-            department: role === 'STUDENT' ? 'CSE' : 'Campus Management Cell',
-            createdAt: new Date().toISOString(),
-          };
-          setUser(localUser);
-          localStorage.setItem('campuscare_user', JSON.stringify(localUser));
-          setIsLoading(false);
-          return { success: true };
-        }
         setIsLoading(false);
         return { success: false, error: 'Invalid credentials. Please check your Roll Number / Admin ID and password.' };
       }
 
       if (data.user) {
-        await fetchProfile(data.user.id, data.user.email || emailToAuth);
+        await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id);
+        const profile = await fetchProfile(data.user.id, data.user.email || emailToAuth);
+        
+        if (profile && profile.role === 'STUDENT' && profile.isApproved === false) {
+           await supabase.auth.signOut();
+           setUser(null);
+           localStorage.removeItem('campuscare_user');
+           setIsLoading(false);
+           return { success: false, error: 'Your account is pending admin approval. Please wait for authorization.' };
+        }
       }
 
       setIsLoading(false);
@@ -194,21 +199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (authError) {
-        const newUser: UserProfile = {
-          id: `usr-student-${Date.now()}`,
-          fullName: data.fullName,
-          studentId: data.studentId,
-          email: data.email,
-          department: data.department,
-          year: data.year,
-          section: data.section,
-          role: 'STUDENT',
-          createdAt: new Date().toISOString(),
-        };
-        setUser(newUser);
-        localStorage.setItem('campuscare_user', JSON.stringify(newUser));
         setIsLoading(false);
-        return { success: true };
+        return { success: false, error: authError.message };
       }
 
       const userId = authData.user?.id || `usr-student-${Date.now()}`;
@@ -223,23 +215,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           department: data.department,
           year: data.year,
           section: data.section,
+          is_approved: false, // Explicitly pending
         },
       ]);
 
-      const newUserProfile: UserProfile = {
-        id: userId,
-        fullName: data.fullName,
-        studentId: data.studentId,
-        email: data.email,
-        department: data.department,
-        year: data.year,
-        section: data.section,
-        role: 'STUDENT',
-        createdAt: new Date().toISOString(),
-      };
-
-      setUser(newUserProfile);
-      localStorage.setItem('campuscare_user', JSON.stringify(newUserProfile));
+      // Sign out immediately because they must be approved by admin before logging in
+      await supabase.auth.signOut();
+      
       setIsLoading(false);
       return { success: true };
     } catch (err: any) {

@@ -24,6 +24,7 @@ export const AdminLayout: React.FC = () => {
 
   const adminNavItems = [
     { label: 'Overview', path: '/admin', icon: LayoutDashboard },
+    { label: 'Student Mgmt', path: '/admin/students', icon: Users },
     { label: 'All Submissions', path: '/admin/submissions', icon: Layers },
     {
       label: 'Priority Queue',

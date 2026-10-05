@@ -104,7 +104,7 @@ export const Login: React.FC = () => {
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              CMC / Admin Sign In
+              Admin Sign In
             </button>
           </div>
 

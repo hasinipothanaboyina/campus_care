@@ -42,7 +42,7 @@ export const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      await registerStudent({
+      const res = await registerStudent({
         fullName: formData.fullName,
         studentId: formData.studentId,
         email: formData.email,
@@ -51,9 +51,15 @@ export const Register: React.FC = () => {
         section: formData.section,
         password: formData.password,
       });
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Registration failed. Please try again.');
+      
+      if (res.success) {
+        alert('Registration successful! Your account is pending admin approval. You can login once approved.');
+        navigate('/login');
+      } else {
+        setError(res.error || 'Registration failed.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
