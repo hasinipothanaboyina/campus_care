@@ -11,7 +11,7 @@ import {
   BarChart3,
   Sparkles,
   Bell,
-  Settings as SettingsIcon,
+  Settings as SettingsIcon, Users,
 } from 'lucide-react';
 import { useCampusCare } from '../../context/CampusCareContext';
 
