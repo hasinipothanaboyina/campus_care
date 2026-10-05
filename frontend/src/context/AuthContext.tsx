@@ -134,27 +134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
           emailToAuth = `${cleanId}@campuscare.edu`;
         }
-      }
-
-      // Hardcoded Admin Principal bypass as requested
-      if (identifier.trim().toUpperCase() === '24481A67383' && password === 'srgec@123') {
-        const adminProfile: UserProfile = {
-          id: 'admin-principal-fixed',
-          fullName: 'Principal Admin',
-          email: 'admin@srgec.edu', // Placeholder email for the hardcoded admin
-          role: 'ADMIN',
-          studentId: '24481A67383',
-          department: 'Administration',
-          isApproved: true,
-          lastLogin: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        };
-        setUser(adminProfile);
-        localStorage.setItem('campuscare_user', JSON.stringify(adminProfile));
-        setIsLoading(false);
-        return { success: true };
-      }
-
       const { data, error } = await supabase.auth.signInWithPassword({ email: emailToAuth, password });
 
       if (error) {
