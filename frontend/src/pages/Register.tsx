@@ -8,7 +8,7 @@ export const Register: React.FC = () => {
     fullName: '',
     studentId: '',
     email: '',
-    department: 'Computer Science & Engineering',
+    department: 'CSE',
     year: '3rd Year',
     section: 'Section A',
     password: '',
@@ -146,14 +146,17 @@ export const Register: React.FC = () => {
                   onChange={handleChange}
                   className="w-full px-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
                 >
-                  <option value="Computer Science & Engineering">CSE</option>
-                  <option value="Electronics & Communication">ECE</option>
-                  <option value="Mechanical Engineering">Mechanical</option>
-                  <option value="Civil Engineering">Civil</option>
-                  <option value="Electrical Engineering">EEE</option>
-                  <option value="Information Technology">IT</option>
-                  <option value="Business & Management">BBA / MBA</option>
-                  <option value="Sciences & Humanities">Sciences</option>
+                  <option value="CSE">CSE</option>
+                  <option value="AIML">AIML</option>
+                  <option value="AIDS">AIDS</option>
+                  <option value="IT">IT</option>
+                  <option value="IOT">IOT</option>
+                  <option value="EEE">EEE</option>
+                  <option value="ECE">ECE</option>
+                  <option value="MECHANICAL">MECHANICAL</option>
+                  <option value="CIVIL">CIVIL</option>
+                  <option value="MBA">MBA</option>
+                  <option value="PHARMACY">PHARMACY</option>
                 </select>
               </div>
 

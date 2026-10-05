@@ -154,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: emailToAuth,
             role,
             studentId: identifier,
-            department: role === 'STUDENT' ? 'Computer Science & Engineering' : 'Campus Management Cell',
+            department: role === 'STUDENT' ? 'CSE' : 'Campus Management Cell',
             createdAt: new Date().toISOString(),
           };
           setUser(localUser);

@@ -7,7 +7,7 @@ export const StudentProfilePage: React.FC = () => {
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [studentId, setStudentId] = useState(user?.studentId || '');
-  const [department, setDepartment] = useState(user?.department || 'Computer Science & Engineering');
+  const [department, setDepartment] = useState(user?.department || 'CSE');
   const [year, setYear] = useState(user?.year || '3rd Year');
   const [section, setSection] = useState(user?.section || 'Section A');
   const [saved, setSaved] = useState(false);
@@ -88,12 +88,23 @@ export const StudentProfilePage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
-              <input
-                type="text"
+              <select
                 value={department}
                 onChange={e => setDepartment(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-600"
-              />
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-600 bg-white"
+              >
+                <option value="CSE">CSE</option>
+                <option value="AIML">AIML</option>
+                <option value="AIDS">AIDS</option>
+                <option value="IT">IT</option>
+                <option value="IOT">IOT</option>
+                <option value="EEE">EEE</option>
+                <option value="ECE">ECE</option>
+                <option value="MECHANICAL">MECHANICAL</option>
+                <option value="CIVIL">CIVIL</option>
+                <option value="MBA">MBA</option>
+                <option value="PHARMACY">PHARMACY</option>
+              </select>
             </div>
 
             <div>
