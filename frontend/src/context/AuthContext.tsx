@@ -124,53 +124,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const login = async (identifier: string, password: string, requestedRole?: UserRole): Promise<{ success: boolean; error?: string }> => {
+    const login = async (identifier: string, password: string, requestedRole?: UserRole): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    try {
-      let emailToAuth = identifier.trim();
 
-      // Fast-path resolution for Admin
-      if (identifier.trim().toUpperCase() === '24481A67383') {
-        emailToAuth = 'admin@srgec.edu';
-      } else if (!emailToAuth.includes('@')) {
-        try {
-          const { data } = await supabase.from('profiles').select('email').eq('student_id', emailToAuth).maybeSingle();
-          if (data?.email) emailToAuth = data.email;
-          else {
+    const loginProcess = async () => {
+      try {
+        let emailToAuth = identifier.trim();
+        if (identifier.trim().toUpperCase() === '24481A67383') {
+          emailToAuth = 'admin@srgec.edu';
+        } else if (!emailToAuth.includes('@')) {
+          try {
+            const { data } = await supabase.from('profiles').select('email').eq('student_id', emailToAuth).maybeSingle();
+            if (data?.email) emailToAuth = data.email;
+            else {
+              const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
+              emailToAuth = cleanId + '@campuscare.edu';
+            }
+          } catch (e) {
             const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
-            emailToAuth = `${cleanId}@campuscare.edu`;
+            emailToAuth = cleanId + '@campuscare.edu';
           }
-        } catch (e) {
-          const cleanId = emailToAuth.toLowerCase().replace(/[^a-z0-9]/g, '');
-          emailToAuth = `${cleanId}@campuscare.edu`;
         }
-      }
 
-      const { data, error } = await supabase.auth.signInWithPassword({ email: emailToAuth, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email: emailToAuth, password });
 
-      if (error) {
-        setIsLoading(false);
-        return { success: false, error: 'Invalid credentials. Please check your Roll Number / Admin ID and password.' };
-      }
-
-      if (data.user) {
-        await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id);
-        const profile = await fetchProfile(data.user.id, data.user.email || emailToAuth);
-        
-        if (profile && profile.role === 'STUDENT' && profile.isApproved === false) {
-           await supabase.auth.signOut();
-           setUser(null);
-           localStorage.removeItem('campuscare_user');
-           setIsLoading(false);
-           return { success: false, error: 'Your account is pending admin approval. Please wait for authorization.' };
+        if (error) {
+          return { success: false, error: 'Invalid credentials. Please check your Roll Number / Admin ID and password.' };
         }
-      }
 
+        if (data.user) {
+          await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id).catch(() => {});
+          const profile = await fetchProfile(data.user.id, data.user.email || emailToAuth);
+          
+          if (profile && profile.role === 'STUDENT' && profile.isApproved === false) {
+             await supabase.auth.signOut().catch(() => {});
+             setUser(null);
+             localStorage.removeItem('campuscare_user');
+             return { success: false, error: 'Your account is pending admin approval. Please wait for authorization.' };
+          }
+        }
+
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Login failed.' };
+      }
+    };
+
+    try {
+      const result = await Promise.race([
+        loginProcess(),
+        new Promise<{ success: boolean; error?: string }>((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timed out. Please check your internet connection.')), 6000)
+        )
+      ]);
       setIsLoading(false);
-      return { success: true };
-    } catch (err: any) {
+      return result;
+    } catch (error: any) {
       setIsLoading(false);
-      return { success: false, error: err.message || 'Login failed.' };
+      return { success: false, error: error.message };
     }
   };
 
@@ -298,3 +309,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
