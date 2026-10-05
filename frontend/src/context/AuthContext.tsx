@@ -153,11 +153,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (data.user) {
-          await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id).catch(() => {});
+          try { await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id); } catch (e) {}
           const profile = await fetchProfile(data.user.id, data.user.email || emailToAuth);
           
           if (profile && profile.role === 'STUDENT' && profile.isApproved === false) {
-             await supabase.auth.signOut().catch(() => {});
+             try { await supabase.auth.signOut(); } catch (e) {}
              setUser(null);
              localStorage.removeItem('campuscare_user');
              return { success: false, error: 'Your account is pending admin approval. Please wait for authorization.' };
@@ -309,4 +309,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
