@@ -107,11 +107,13 @@ export const Register: React.FC = () => {
                   <BookOpen className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
+                    inputMode="numeric"
                     name="studentId"
                     required
                     value={formData.studentId}
-                    onChange={handleChange}
-                    placeholder="e.g. 2024-CSE-042"
+                    onChange={(e) => handleChange({ target: { name: 'studentId', value: e.target.value.replace(/\D/g, '') } } as any)}
+                    maxLength={10}
+                    placeholder="e.g. 1234567890"
                     className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>

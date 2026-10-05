@@ -134,10 +134,12 @@ export const Login: React.FC = () => {
                 )}
                 <input
                   type="text"
+                  inputMode="numeric"
                   required
                   value={identifier}
-                  onChange={e => setIdentifier(e.target.value)}
-                  placeholder={role === 'ADMIN' ? 'Enter your Admin ID' : 'Enter your roll number'}
+                  onChange={e => setIdentifier(e.target.value.replace(/\D/g, ''))}
+                  maxLength={role === 'ADMIN' ? 12 : 10}
+                  placeholder={role === 'ADMIN' ? 'Enter your 12-digit Admin ID' : 'Enter your 10-digit roll number'}
                   className="w-full pl-9 pr-4 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent font-medium"
                 />
               </div>
