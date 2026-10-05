@@ -474,8 +474,10 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateSubmissionStatus = async (submissionId: string, status: SubmissionStatus, internalNotes?: string) => {
+    let oldStatus: SubmissionStatus = 'Submitted';
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
+        oldStatus = sub.status;
         const newSub = {
           ...sub,
           status,
@@ -507,14 +509,27 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updated_at: new Date().toISOString(),
         })
         .eq('id', submissionId);
+
+      // Record in status_history
+      await supabase.from('status_history').insert([
+        {
+          submission_id: submissionId,
+          old_status: oldStatus,
+          new_status: status,
+          changed_by: user?.id,
+          notes: internalNotes,
+        },
+      ]);
     } catch (e) {
       console.error('DB status update error:', e);
     }
   };
 
   const assignSubmission = async (submissionId: string, assignedTo: string, assignedTeam: string) => {
+    let oldStatus: SubmissionStatus = 'Submitted';
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
+        oldStatus = sub.status;
         const newStatus: SubmissionStatus = sub.status === 'Submitted' ? 'Assigned' : sub.status;
         const newSub = {
           ...sub,
@@ -549,6 +564,27 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updated_at: new Date().toISOString(),
         })
         .eq('id', submissionId);
+
+      // Record assignment
+      await supabase.from('assignments').insert([
+        {
+          submission_id: submissionId,
+          assigned_to: assignedTo,
+          assigned_team: assignedTeam,
+          assigned_by: user?.id,
+        },
+      ]);
+
+      // Record status transition
+      await supabase.from('status_history').insert([
+        {
+          submission_id: submissionId,
+          old_status: oldStatus,
+          new_status: 'Assigned',
+          changed_by: user?.id,
+          notes: `Assigned to ${assignedTo} (${assignedTeam})`,
+        },
+      ]);
     } catch (e) {
       console.error('DB assignment error:', e);
     }
