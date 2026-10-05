@@ -137,13 +137,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Hardcoded Admin Principal bypass as requested
-      if (emailToAuth === 'principal.srgec@gmail.com' && password === 'principal@123') {
+      if (identifier.trim().toUpperCase() === '24481A67383' && password === 'srgec@123') {
         const adminProfile: UserProfile = {
           id: 'admin-principal-fixed',
           fullName: 'Principal Admin',
-          email: 'principal.srgec@gmail.com',
+          email: 'admin@srgec.edu', // Placeholder email for the hardcoded admin
           role: 'ADMIN',
-          studentId: 'PRINCIPAL',
+          studentId: '24481A67383',
           department: 'Administration',
           isApproved: true,
           lastLogin: new Date().toISOString(),
