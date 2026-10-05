@@ -95,7 +95,7 @@ export const Register: React.FC = () => {
                     value={formData.fullName}
                     onChange={handleChange}
                     placeholder="e.g. Alex Johnson"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
               </div>
@@ -114,7 +114,7 @@ export const Register: React.FC = () => {
                     onChange={(e) => handleChange({ target: { name: 'studentId', value: e.target.value.replace(/\D/g, '') } } as any)}
                     maxLength={10}
                     placeholder="e.g. 1234567890"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
               </div>
@@ -132,7 +132,7 @@ export const Register: React.FC = () => {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="student@campuscare.edu"
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                 />
               </div>
             </div>
@@ -145,7 +145,7 @@ export const Register: React.FC = () => {
                   name="department"
                   value={formData.department}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
+                  className="w-full px-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
                 >
                   <option value="Computer Science & Engineering">CSE</option>
                   <option value="Electronics & Communication">ECE</option>
@@ -165,7 +165,7 @@ export const Register: React.FC = () => {
                   name="year"
                   value={formData.year}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
+                  className="w-full px-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
                 >
                   <option value="1st Year">1st Year</option>
                   <option value="2nd Year">2nd Year</option>
@@ -182,7 +182,7 @@ export const Register: React.FC = () => {
                   name="section"
                   value={formData.section}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
+                  className="w-full px-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
                 >
                   <option value="Section A">Section A</option>
                   <option value="Section B">Section B</option>
@@ -205,7 +205,7 @@ export const Register: React.FC = () => {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="••••••••"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
               </div>
@@ -222,7 +222,7 @@ export const Register: React.FC = () => {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     placeholder="••••••••"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
               </div>
