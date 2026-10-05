@@ -122,7 +122,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       let emailToAuth = identifier.trim();
 
-      if (!emailToAuth.includes('@')) {
+      // Fast-path resolution for Admin
+      if (identifier.trim().toUpperCase() === '24481A67383') {
+        emailToAuth = 'admin@srgec.edu';
+      } else if (!emailToAuth.includes('@')) {
         try {
           const { data } = await supabase.from('profiles').select('email').eq('student_id', emailToAuth).maybeSingle();
           if (data?.email) emailToAuth = data.email;
