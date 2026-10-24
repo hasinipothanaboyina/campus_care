@@ -26,12 +26,45 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRole && user.role !== allowedRole) {
-    // If student tries to access admin route, redirect to student dashboard
-    if (user.role === 'STUDENT' && allowedRole === 'ADMIN') {
-      return <Navigate to="/dashboard" replace />;
+  // Enforce approval check for student role
+  if ((user.role === 'STUDENT' || user.role === 'student') && !user.isApproved) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRole) {
+    const isStudentTarget = allowedRole === 'STUDENT' || allowedRole === 'student';
+    const isParentTarget = allowedRole === 'PARENT' || allowedRole === 'parent';
+    const isAdminTarget = allowedRole === 'ADMIN' || allowedRole === 'admin';
+
+    const isUserAdminOrCmc =
+      user.role === 'ADMIN' ||
+      user.role === 'admin' ||
+      user.role === 'CMC' ||
+      user.role === 'cmc';
+    const isUserParent = user.role === 'PARENT' || user.role === 'parent';
+    const isUserStudent = user.role === 'STUDENT' || user.role === 'student';
+
+    const getRoleDefaultPath = () => {
+      if (isUserAdminOrCmc) return '/admin';
+      if (isUserParent) return '/parent';
+      return '/dashboard';
+    };
+
+    if (isAdminTarget && !isUserAdminOrCmc) {
+      return <Navigate to={getRoleDefaultPath()} replace />;
     }
-    // If admin accesses student routes, allow or redirect
+
+    if (isParentTarget && !isUserParent) {
+      return <Navigate to={getRoleDefaultPath()} replace />;
+    }
+
+    if (isStudentTarget && !isUserStudent) {
+      return <Navigate to={getRoleDefaultPath()} replace />;
+    }
+
+    if (!isAdminTarget && !isParentTarget && !isStudentTarget && user.role !== allowedRole) {
+      return <Navigate to={getRoleDefaultPath()} replace />;
+    }
   }
 
   return <>{children}</>;

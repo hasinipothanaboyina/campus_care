@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCampusCare } from '../context/CampusCareContext';
 import { IssueCategory, Urgency, Submission } from '../types';
+import { CAMPUS_BUILDINGS } from '../constants/locations';
 import {
   AlertCircle,
   Building2,
@@ -38,10 +39,11 @@ export const ReportIssueStepForm: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [urgency, setUrgency] = useState<Urgency>('Medium');
-  const [building, setBuilding] = useState('Block B');
+  const [building, setBuilding] = useState<string>(CAMPUS_BUILDINGS[0]);
   const [room, setRoom] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdSubmission, setCreatedSubmission] = useState<Submission | null>(null);
 
   // Duplicate detection
@@ -55,6 +57,7 @@ export const ReportIssueStepForm: React.FC = () => {
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await createIssue({
         title,
@@ -67,8 +70,9 @@ export const ReportIssueStepForm: React.FC = () => {
       });
       setCreatedSubmission(res);
       setStep(6); // Step 6 Confirmation
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Failed to submit issue:', e);
+      setSubmitError(e.message || 'Failed to submit report. Please check your connection.');
     } finally {
       setSubmitting(false);
     }
@@ -240,14 +244,11 @@ export const ReportIssueStepForm: React.FC = () => {
                 onChange={e => setBuilding(e.target.value)}
                 className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
               >
-                <option value="Block B">Block B (Engineering)</option>
-                <option value="Central Library">Central Library</option>
-                <option value="Science Block">Science & Humanities Block</option>
-                <option value="Main Administration">Main Admin Building</option>
-                <option value="Auditorium">Main Auditorium</option>
-                <option value="Student Amenities Center">Student Amenities Center</option>
-                <option value="Sports Complex">Sports Complex & Gymnasium</option>
-                <option value="West Campus Walkway">West Campus Walkway</option>
+                {CAMPUS_BUILDINGS.map(b => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -398,6 +399,13 @@ export const ReportIssueStepForm: React.FC = () => {
               <div className="pt-2">
                 <p className="text-[11px] font-semibold text-slate-500 mb-1">Attached Photo:</p>
                 <img src={imageUrl} alt="Evidence preview" className="w-48 h-28 object-cover rounded-xl border border-slate-200" />
+              </div>
+            )}
+
+            {submitError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{submitError}</span>
               </div>
             )}
           </div>

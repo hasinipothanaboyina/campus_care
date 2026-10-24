@@ -44,7 +44,7 @@ export const AdminSettingsPage: React.FC = () => {
         <div className="space-y-2 text-xs text-slate-600">
           <div className="flex justify-between py-1 border-b border-slate-50">
             <span className="font-semibold text-slate-700">Environment Host:</span>
-            <span className="font-mono text-indigo-600">https://vkquibpblhncdxteihkt.supabase.co</span>
+            <span className="font-mono text-indigo-600">{import.meta.env.VITE_SUPABASE_URL || 'Supabase Connected'}</span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50">
             <span className="font-semibold text-slate-700">Authentication Protocol:</span>

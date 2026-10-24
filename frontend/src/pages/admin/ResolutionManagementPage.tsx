@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCampusCare } from '../../context/CampusCareContext';
-import { CheckCircle2, Wrench, Image, Calendar, User, Search } from 'lucide-react';
+import { CheckCircle2, Wrench, Image, Calendar, User, Search, Loader2 } from 'lucide-react';
 
 export const ResolutionManagementPage: React.FC = () => {
-  const { submissions, resolveSubmission } = useCampusCare();
+  const { submissions, resolveSubmission, refreshData } = useCampusCare();
 
   const [selectedId, setSelectedId] = useState<string>('');
   const [actionTaken, setActionTaken] = useState('');
@@ -12,6 +12,12 @@ export const ResolutionManagementPage: React.FC = () => {
   const [afterImage, setAfterImage] = useState('');
   const [notes, setNotes] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const openSubmissions = submissions.filter(s => s.status !== 'Resolved' && s.status !== 'Closed');
   const resolvedSubmissions = submissions.filter(s => s.status === 'Resolved');
@@ -21,34 +27,46 @@ export const ResolutionManagementPage: React.FC = () => {
     const item = submissions.find(s => s.id === id);
     if (item) {
       setBeforeImage(item.imageUrl || '');
+      if (item.assignedTo && !responsiblePerson) {
+        setResponsiblePerson(item.assignedTo);
+      }
     }
   };
 
-  const handleSubmitResolution = (e: React.FormEvent) => {
+  const handleSubmitResolution = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedId || !actionTaken || !responsiblePerson) {
-      alert('Please select a submission and fill in action taken and responsible person.');
+      setErrorMsg('Please select a submission and fill in action taken and responsible person.');
       return;
     }
 
-    resolveSubmission(selectedId, {
-      actionTaken,
-      responsiblePerson,
-      resolvedDate: new Date().toISOString(),
-      notes,
-      beforeImageUrl: beforeImage || undefined,
-      afterImageUrl: afterImage || undefined,
-    });
+    try {
+      setSubmitting(true);
+      setErrorMsg('');
+      await resolveSubmission(selectedId, {
+        actionTaken,
+        responsiblePerson,
+        resolvedDate: new Date().toISOString(),
+        notes,
+        beforeImageUrl: beforeImage || undefined,
+        afterImageUrl: afterImage || undefined,
+      });
 
-    setSuccessMsg(`Resolution successfully recorded for ${selectedId}!`);
-    setSelectedId('');
-    setActionTaken('');
-    setResponsiblePerson('');
-    setBeforeImage('');
-    setAfterImage('');
-    setNotes('');
+      setSuccessMsg(`Resolution successfully recorded for ${selectedId}!`);
+      setSelectedId('');
+      setActionTaken('');
+      setResponsiblePerson('');
+      setBeforeImage('');
+      setAfterImage('');
+      setNotes('');
 
-    setTimeout(() => setSuccessMsg(''), 4000);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      console.error('Failed to submit resolution:', err);
+      setErrorMsg(err.message || 'Failed to submit resolution. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -63,6 +81,12 @@ export const ResolutionManagementPage: React.FC = () => {
           Record completed repair work, responsible maintenance personnel, and upload Before/After evidence images.
         </p>
       </div>
+
+      {errorMsg && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-xs font-bold rounded-2xl flex items-center gap-2">
+          <span>{errorMsg}</span>
+        </div>
+      )}
 
       {successMsg && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2">
@@ -153,10 +177,20 @@ export const ResolutionManagementPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow transition-all flex items-center justify-center gap-2"
+            disabled={submitting}
+            className="w-full py-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Complete & Publish Resolution</span>
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Recording Resolution...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Complete & Publish Resolution</span>
+              </>
+            )}
           </button>
         </form>
 

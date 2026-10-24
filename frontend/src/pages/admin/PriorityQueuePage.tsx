@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useCampusCare } from '../../context/CampusCareContext';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -6,7 +6,11 @@ import { AlertTriangle, ThumbsUp, Clock, ShieldCheck, MapPin, Info } from 'lucid
 import { EmptyState } from '../../components/common/EmptyState';
 
 export const PriorityQueuePage: React.FC = () => {
-  const { submissions, updateSubmissionStatus } = useCampusCare();
+  const { submissions, updateSubmissionStatus, refreshData } = useCampusCare();
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   // Active Unresolved Submissions sorted by rule-based priority score descending
   const priorityQueue = [...submissions]

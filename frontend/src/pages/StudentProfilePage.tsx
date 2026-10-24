@@ -11,18 +11,26 @@ export const StudentProfilePage: React.FC = () => {
   const [year, setYear] = useState(user?.year || '3rd Year');
   const [section, setSection] = useState(user?.section || 'Section A');
   const [saved, setSaved] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({
-      fullName,
-      studentId,
-      department,
-      year,
-      section,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setUpdating(true);
+    try {
+      await updateProfile({
+        fullName,
+        studentId,
+        department,
+        year,
+        section,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (

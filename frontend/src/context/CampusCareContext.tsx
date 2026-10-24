@@ -86,9 +86,16 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (subData && !subErr) {
         // Fetch supports list per submission
         const { data: supportsData } = await supabase.from('supports').select('*');
+        // Fetch resolution records per submission
+        const { data: resolutionsData } = await supabase.from('resolution_records').select('*');
+        // Fetch assignments per submission
+        const { data: assignmentsData } = await supabase
+          .from('assignments')
+          .select('*')
+          .order('created_at', { ascending: false });
 
         // Deduplicate submissions by ID and purge stale mock items
-        const cleanSubmissions = subData.filter((item: any) => 
+        const cleanSubmissions = subData.filter((item: any) =>
           !['CC-2026-101', 'CC-2026-102', 'CC-2026-103', 'CC-2026-104', 'CC-2026-105'].includes(item.id)
         );
 
@@ -97,6 +104,17 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const itemSupports = supportsData
             ? supportsData.filter((s: any) => s.submission_id === item.id).map((s: any) => s.user_id)
             : [];
+
+          const itemRes = resolutionsData
+            ? resolutionsData.find((r: any) => r.submission_id === item.id)
+            : null;
+
+          const itemAssignment = assignmentsData
+            ? assignmentsData.find((a: any) => a.submission_id === item.id)
+            : null;
+
+          const canonicalAssignedTo = item.assigned_to || itemAssignment?.assigned_to || itemRes?.responsible_person || undefined;
+          const canonicalAssignedTeam = item.assigned_team || itemAssignment?.assigned_team || (itemRes ? 'Facilities Maintenance' : undefined);
 
           uniqueMap.set(item.id, {
             id: item.id,
@@ -118,13 +136,21 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             studentDepartment: item.student_department,
             supportCount: itemSupports.length || item.support_count || 1,
             supportedUserIds: itemSupports,
-            assignedTo: item.assigned_to,
-            assignedTeam: item.assigned_team,
+            assignedTo: canonicalAssignedTo,
+            assignedTeam: canonicalAssignedTeam,
             internalNotes: item.internal_notes,
             verifiedBy: item.verified_by,
             verifiedAt: item.verified_at,
             reason: item.reason,
             expectedBenefit: item.expected_benefit,
+            resolution: itemRes ? {
+              actionTaken: itemRes.action_taken,
+              responsiblePerson: itemRes.responsible_person,
+              resolvedDate: itemRes.resolved_date,
+              notes: itemRes.notes,
+              beforeImageUrl: itemRes.before_image_url,
+              afterImageUrl: itemRes.after_image_url,
+            } : undefined,
             createdAt: item.created_at,
             updatedAt: item.updated_at || item.created_at,
           });
@@ -179,7 +205,60 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   useEffect(() => {
+    // 1. Initial fetch
     refreshData();
+
+    // 2. Window focus refetch: Ensures switching tabs/windows updates to latest DB state
+    const handleFocus = () => {
+      refreshData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // 3. Cross-tab storage synchronization
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'campuscare_sync_trigger' || e.key === 'campuscare_submissions') {
+        refreshData();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 4. Polling fallback every 15 seconds to ensure cross-dashboard live consistency
+    const interval = setInterval(() => {
+      refreshData();
+    }, 15000);
+
+    // 5. Supabase Realtime channel for live cross-portal submissions & resolutions sync
+    const channel = supabase
+      .channel('campuscare_global_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'submissions' },
+        () => {
+          refreshData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'resolution_records' },
+        () => {
+          refreshData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'assignments' },
+        () => {
+          refreshData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, [user?.id]);
 
   // Derived intelligence layers
@@ -263,35 +342,36 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updatedAt: new Date().toISOString(),
     };
 
-    saveSubmissionsState([newSubmission, ...submissions]);
+    // Insert into Supabase first
+    const { error: insErr } = await supabase.from('submissions').insert([
+      {
+        id: newId,
+        type: 'issue',
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        building: input.building,
+        room: input.room,
+        location: locationStr,
+        urgency: input.urgency,
+        priority,
+        priority_score: score,
+        status: 'Submitted',
+        image_url: input.imageUrl,
+        student_id: user?.id,
+        student_name: user?.fullName,
+        student_roll_number: user?.studentId,
+        student_department: user?.department,
+        support_count: 1,
+      },
+    ]);
 
-    // Insert into Supabase
-    try {
-      await supabase.from('submissions').insert([
-        {
-          id: newId,
-          type: 'issue',
-          title: input.title,
-          description: input.description,
-          category: input.category,
-          building: input.building,
-          room: input.room,
-          location: locationStr,
-          urgency: input.urgency,
-          priority,
-          priority_score: score,
-          status: 'Submitted',
-          image_url: input.imageUrl,
-          student_id: user?.id,
-          student_name: user?.fullName,
-          student_roll_number: user?.studentId,
-          student_department: user?.department,
-          support_count: 1,
-        },
-      ]);
-    } catch (err) {
-      console.error('Error inserting submission into Supabase DB:', err);
+    if (insErr) {
+      console.error('Error inserting submission into Supabase DB:', insErr.message);
+      throw new Error(`Failed to submit issue to database: ${insErr.message}`);
     }
+
+    saveSubmissionsState([newSubmission, ...submissions]);
 
     addNotification(
       newSubmission.studentId,
@@ -329,32 +409,34 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updatedAt: new Date().toISOString(),
     };
 
-    saveSubmissionsState([newSubmission, ...submissions]);
+    // Insert into Supabase first
+    const { error: sugErr } = await supabase.from('submissions').insert([
+      {
+        id: newId,
+        type: 'suggestion',
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        location: 'Campus-wide',
+        urgency: 'Low',
+        priority: 'Low',
+        priority_score: 30,
+        status: 'Submitted',
+        image_url: input.imageUrl,
+        student_id: user?.id,
+        student_name: user?.fullName,
+        student_roll_number: user?.studentId,
+        student_department: user?.department,
+        support_count: 1,
+      },
+    ]);
 
-    try {
-      await supabase.from('submissions').insert([
-        {
-          id: newId,
-          type: 'suggestion',
-          title: input.title,
-          description: input.description,
-          category: input.category,
-          location: 'Campus-wide',
-          urgency: 'Low',
-          priority: 'Low',
-          priority_score: 30,
-          status: 'Submitted',
-          image_url: input.imageUrl,
-          student_id: user?.id,
-          student_name: user?.fullName,
-          student_roll_number: user?.studentId,
-          student_department: user?.department,
-          support_count: 1,
-        },
-      ]);
-    } catch (e) {
-      console.error('DB suggestion insert error:', e);
+    if (sugErr) {
+      console.error('DB suggestion insert error:', sugErr.message);
+      throw new Error(`Failed to submit suggestion to database: ${sugErr.message}`);
     }
+
+    saveSubmissionsState([newSubmission, ...submissions]);
 
     addNotification(
       newSubmission.studentId,
@@ -394,34 +476,36 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updatedAt: new Date().toISOString(),
     };
 
-    saveSubmissionsState([newSubmission, ...submissions]);
+    // Insert into Supabase first
+    const { error: impErr } = await supabase.from('submissions').insert([
+      {
+        id: newId,
+        type: 'improvement_request',
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        category: input.category,
+        urgency: 'Medium',
+        priority: 'Medium',
+        priority_score: 50,
+        status: 'Submitted',
+        image_url: input.imageUrl,
+        reason: input.reason,
+        expected_benefit: input.expectedBenefit,
+        student_id: user?.id,
+        student_name: user?.fullName,
+        student_roll_number: user?.studentId,
+        student_department: user?.department,
+        support_count: 1,
+      },
+    ]);
 
-    try {
-      await supabase.from('submissions').insert([
-        {
-          id: newId,
-          type: 'improvement_request',
-          title: input.title,
-          description: input.description,
-          location: input.location,
-          category: input.category,
-          urgency: 'Medium',
-          priority: 'Medium',
-          priority_score: 50,
-          status: 'Submitted',
-          image_url: input.imageUrl,
-          reason: input.reason,
-          expected_benefit: input.expectedBenefit,
-          student_id: user?.id,
-          student_name: user?.fullName,
-          student_roll_number: user?.studentId,
-          student_department: user?.department,
-          support_count: 1,
-        },
-      ]);
-    } catch (e) {
-      console.error('DB improvement request insert error:', e);
+    if (impErr) {
+      console.error('DB improvement request insert error:', impErr.message);
+      throw new Error(`Failed to submit improvement request to database: ${impErr.message}`);
     }
+
+    saveSubmissionsState([newSubmission, ...submissions]);
 
     addNotification(
       newSubmission.studentId,
@@ -475,9 +559,13 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const updateSubmissionStatus = async (submissionId: string, status: SubmissionStatus, internalNotes?: string) => {
     let oldStatus: SubmissionStatus = 'Submitted';
+    const targetSub = submissions.find(s => s.id === submissionId);
+    if (targetSub) {
+      oldStatus = targetSub.status;
+    }
+
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
-        oldStatus = sub.status;
         const newSub = {
           ...sub,
           status,
@@ -501,14 +589,22 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     saveSubmissionsState(updated);
 
     try {
-      await supabase
+      const updatePayload: any = {
+        status,
+        internal_notes: internalNotes,
+        updated_at: new Date().toISOString(),
+      };
+      if (status === 'Verified') {
+        updatePayload.verified_by = user?.id;
+        updatePayload.verified_at = new Date().toISOString();
+      }
+
+      const { error: updErr } = await supabase
         .from('submissions')
-        .update({
-          status,
-          internal_notes: internalNotes,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', submissionId);
+
+      if (updErr) throw updErr;
 
       // Record in status_history
       await supabase.from('status_history').insert([
@@ -517,20 +613,29 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           old_status: oldStatus,
           new_status: status,
           changed_by: user?.id,
-          notes: internalNotes,
+          notes: internalNotes || `Status updated to ${status}`,
         },
       ]);
+
+      localStorage.setItem('campuscare_sync_trigger', Date.now().toString());
+      await refreshData();
     } catch (e) {
       console.error('DB status update error:', e);
+      throw e;
     }
   };
 
   const assignSubmission = async (submissionId: string, assignedTo: string, assignedTeam: string) => {
     let oldStatus: SubmissionStatus = 'Submitted';
+    const targetSub = submissions.find(s => s.id === submissionId);
+    if (targetSub) {
+      oldStatus = targetSub.status;
+    }
+    const shouldUpdateStatus = oldStatus === 'Submitted' || oldStatus === 'Under Review' || oldStatus === 'Verified';
+    const newStatus: SubmissionStatus = shouldUpdateStatus ? 'Assigned' : oldStatus;
+
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
-        oldStatus = sub.status;
-        const newStatus: SubmissionStatus = sub.status === 'Submitted' ? 'Assigned' : sub.status;
         const newSub = {
           ...sub,
           assignedTo,
@@ -555,15 +660,21 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     saveSubmissionsState(updated);
 
     try {
-      await supabase
+      const updatePayload: any = {
+        assigned_to: assignedTo,
+        assigned_team: assignedTeam,
+        updated_at: new Date().toISOString(),
+      };
+      if (shouldUpdateStatus) {
+        updatePayload.status = 'Assigned';
+      }
+
+      const { error: updErr } = await supabase
         .from('submissions')
-        .update({
-          assigned_to: assignedTo,
-          assigned_team: assignedTeam,
-          status: 'Assigned',
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', submissionId);
+
+      if (updErr) throw updErr;
 
       // Record assignment
       await supabase.from('assignments').insert([
@@ -575,27 +686,44 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         },
       ]);
 
-      // Record status transition
-      await supabase.from('status_history').insert([
-        {
-          submission_id: submissionId,
-          old_status: oldStatus,
-          new_status: 'Assigned',
-          changed_by: user?.id,
-          notes: `Assigned to ${assignedTo} (${assignedTeam})`,
-        },
-      ]);
+      // Record status transition if status was advanced
+      if (shouldUpdateStatus) {
+        await supabase.from('status_history').insert([
+          {
+            submission_id: submissionId,
+            old_status: oldStatus,
+            new_status: 'Assigned',
+            changed_by: user?.id,
+            notes: `Assigned to ${assignedTo} (${assignedTeam})`,
+          },
+        ]);
+      }
+
+      localStorage.setItem('campuscare_sync_trigger', Date.now().toString());
+      await refreshData();
     } catch (e) {
       console.error('DB assignment error:', e);
+      throw e;
     }
   };
 
   const resolveSubmission = async (submissionId: string, resolution: ResolutionRecord) => {
+    let oldStatus: SubmissionStatus = 'In Progress';
+    const targetSub = submissions.find(s => s.id === submissionId);
+    if (targetSub) {
+      oldStatus = targetSub.status;
+    }
+
+    const assignedPerson = resolution.responsiblePerson || targetSub?.assignedTo || 'CMC Maintenance';
+    const assignedTeam = targetSub?.assignedTeam || 'Facilities Maintenance';
+
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
         const newSub: Submission = {
           ...sub,
           status: 'Resolved',
+          assignedTo: assignedPerson,
+          assignedTeam,
           resolution,
           updatedAt: new Date().toISOString(),
         };
@@ -616,23 +744,60 @@ export const CampusCareProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     saveSubmissionsState(updated);
 
     try {
-      await supabase
+      const { error: subErr } = await supabase
         .from('submissions')
-        .update({ status: 'Resolved', updated_at: new Date().toISOString() })
+        .update({
+          status: 'Resolved',
+          assigned_to: assignedPerson,
+          assigned_team: assignedTeam,
+          verified_by: user?.id,
+          verified_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', submissionId);
 
-      await supabase.from('resolution_records').insert([
+      if (subErr) throw subErr;
+
+      const { error: resErr } = await supabase.from('resolution_records').upsert([
         {
           submission_id: submissionId,
           action_taken: resolution.actionTaken,
           responsible_person: resolution.responsiblePerson,
-          notes: resolution.notes,
-          before_image_url: resolution.beforeImageUrl,
-          after_image_url: resolution.afterImageUrl,
+          resolved_date: resolution.resolvedDate || new Date().toISOString(),
+          notes: resolution.notes || '',
+          before_image_url: resolution.beforeImageUrl || null,
+          after_image_url: resolution.afterImageUrl || null,
+        },
+      ], { onConflict: 'submission_id' });
+
+      if (resErr) throw resErr;
+
+      // Ensure assignment record exists in assignments table
+      await supabase.from('assignments').insert([
+        {
+          submission_id: submissionId,
+          assigned_to: assignedPerson,
+          assigned_team: assignedTeam,
+          assigned_by: user?.id,
         },
       ]);
+
+      // Record in status_history
+      await supabase.from('status_history').insert([
+        {
+          submission_id: submissionId,
+          old_status: oldStatus,
+          new_status: 'Resolved',
+          changed_by: user?.id,
+          notes: `Resolved by ${resolution.responsiblePerson}: ${resolution.actionTaken}`,
+        },
+      ]);
+
+      localStorage.setItem('campuscare_sync_trigger', Date.now().toString());
+      await refreshData();
     } catch (e) {
       console.error('DB resolution record error:', e);
+      throw e;
     }
   };
 

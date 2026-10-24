@@ -1,10 +1,25 @@
-const url = "https://brpdzkzkgfpdviarsbvj.supabase.co/auth/v1/user";
-// Wait, to list users I need the Service Role key. I don't have it.
-// I can just try to sign in with the admin credentials!
-const loginUrl = "https://brpdzkzkgfpdviarsbvj.supabase.co/auth/v1/token?grant_type=password";
-const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJycGR6a3prZ2ZwZHZpYXJzYnZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMDM3NjEsImV4cCI6MjEwNjc3OTc2MX0.K3i364aSFiBUqGJdhfszzNanUdtsTH65Lq65UKmPnPo";
+const fs = require('fs');
+
+// Load environment variables from .env
+let supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+let anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+const adminEmail = process.env.ADMIN_EMAIL || 'admin@srgec.edu';
+const adminPassword = process.env.ADMIN_PASSWORD || '';
+
+if (fs.existsSync('.env')) {
+  const envContent = fs.readFileSync('.env', 'utf8');
+  for (const line of envContent.split('\n')) {
+    if (line.startsWith('VITE_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
+    if (line.startsWith('VITE_SUPABASE_ANON_KEY=')) anonKey = line.split('=')[1].trim();
+  }
+}
 
 async function checkLogin() {
+  if (!adminPassword) {
+    console.error('Error: ADMIN_PASSWORD environment variable is required to run checkLogin.');
+    return;
+  }
+  const loginUrl = `${supabaseUrl}/auth/v1/token?grant_type=password`;
   const response = await fetch(loginUrl, {
     method: 'POST',
     headers: {
@@ -12,12 +27,12 @@ async function checkLogin() {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      email: 'admin@srgec.edu',
-      password: 'srgec@123'
+      email: adminEmail,
+      password: adminPassword
     })
   });
   const data = await response.json();
-  console.log(JSON.stringify(data, null, 2));
+  console.log('Login status:', response.status, data.user ? 'Authenticated successfully' : data.error_description || 'Auth failed');
 }
 
 checkLogin();

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCampusCare } from '../context/CampusCareContext';
 import { ImprovementCategory } from '../types';
+import { CAMPUS_BUILDINGS } from '../constants/locations';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Sparkles, MapPin, ThumbsUp, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ export const ImprovementRequestsPage: React.FC = () => {
   const [expectedBenefit, setExpectedBenefit] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const improvementRequests = submissions.filter(s => s.type === 'improvement_request');
 
@@ -37,23 +39,30 @@ export const ImprovementRequestsPage: React.FC = () => {
     if (!title || !description || !location) return;
 
     setLoading(true);
-    await createImprovementRequest({
-      title,
-      description,
-      location,
-      category,
-      reason,
-      expectedBenefit,
-      imageUrl: imageUrl || undefined,
-    });
-    setLoading(false);
-    setTitle('');
-    setDescription('');
-    setLocation('');
-    setReason('');
-    setExpectedBenefit('');
-    setImageUrl('');
-    setShowForm(false);
+    setFormError(null);
+    try {
+      await createImprovementRequest({
+        title,
+        description,
+        location,
+        category,
+        reason,
+        expectedBenefit,
+        imageUrl: imageUrl || undefined,
+      });
+      setTitle('');
+      setDescription('');
+      setLocation('');
+      setReason('');
+      setExpectedBenefit('');
+      setImageUrl('');
+      setShowForm(false);
+    } catch (err: any) {
+      console.error('Failed to submit improvement request:', err);
+      setFormError(err.message || 'Failed to submit improvement request to database.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -92,7 +101,7 @@ export const ImprovementRequestsPage: React.FC = () => {
                 required
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Install UV Water Purifier in Science Block 3rd Floor"
+                placeholder="e.g. Install UV Water Purifier in M Block 3rd Floor"
                 className="w-full px-4 py-2.5 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-600"
               />
             </div>
@@ -102,11 +111,17 @@ export const ImprovementRequestsPage: React.FC = () => {
               <input
                 type="text"
                 required
+                list="campus-locations-list"
                 value={location}
                 onChange={e => setLocation(e.target.value)}
-                placeholder="e.g. Science Block 3rd Floor Corridor"
+                placeholder="e.g. M Block 3rd Floor Corridor, Hostel, or Canteen"
                 className="w-full px-4 py-2.5 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-600"
               />
+              <datalist id="campus-locations-list">
+                {CAMPUS_BUILDINGS.map(b => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
             </div>
           </div>
 
@@ -172,6 +187,12 @@ export const ImprovementRequestsPage: React.FC = () => {
               />
             </div>
           </div>
+
+          {formError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl">
+              {formError}
+            </div>
+          )}
 
           <button
             type="submit"

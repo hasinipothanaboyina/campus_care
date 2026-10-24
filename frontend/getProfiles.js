@@ -1,7 +1,18 @@
-const url = "https://brpdzkzkgfpdviarsbvj.supabase.co/rest/v1/profiles?select=*";
-const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJycGR6a3prZ2ZwZHZpYXJzYnZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMDM3NjEsImV4cCI6MjEwNjc3OTc2MX0.K3i364aSFiBUqGJdhfszzNanUdtsTH65Lq65UKmPnPo";
+const fs = require('fs');
+
+let supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+let anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+if (fs.existsSync('.env')) {
+  const envContent = fs.readFileSync('.env', 'utf8');
+  for (const line of envContent.split('\n')) {
+    if (line.startsWith('VITE_SUPABASE_URL=')) supabaseUrl = line.split('=')[1].trim();
+    if (line.startsWith('VITE_SUPABASE_ANON_KEY=')) anonKey = line.split('=')[1].trim();
+  }
+}
 
 async function getProfiles() {
+  const url = `${supabaseUrl}/rest/v1/profiles?select=*`;
   const response = await fetch(url, {
     headers: {
       'apikey': anonKey,
@@ -9,7 +20,7 @@ async function getProfiles() {
     }
   });
   const data = await response.json();
-  console.log(JSON.stringify(data, null, 2));
+  console.log('Retrieved profiles count:', Array.isArray(data) ? data.length : 'error');
 }
 
 getProfiles();

@@ -33,6 +33,22 @@ import { AnalyticsPage } from './pages/admin/AnalyticsPage';
 import { AdminNotificationsPage } from './pages/admin/AdminNotificationsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { StudentManagementPage } from './pages/admin/StudentManagementPage';
+import { ParentDashboard } from './pages/parent/ParentDashboard';
+import { ParentLinkStatusPage } from './pages/parent/ParentLinkStatusPage';
+import { useAuth } from './context/AuthContext';
+
+const RootRedirect: React.FC = () => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  if (isLoading) { return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-xs text-slate-400 font-medium">Loading CampusCare...</div>; }
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  if (user.role === 'ADMIN' || user.role === 'CMC' || user.role === 'admin' || user.role === 'cmc') {
+    return <Navigate to="/admin" replace />;
+  }
+  if (user.role === 'PARENT' || user.role === 'parent') {
+    return <Navigate to="/parent" replace />;
+  }
+  return <Navigate to="/dashboard" replace />;
+};
 
 export default function App() {
   return (
@@ -45,12 +61,12 @@ export default function App() {
             <Route path="/register" element={<Register />} />
 
             {/* Root redirect */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<RootRedirect />} />
 
             {/* Student Protected Routes */}
             <Route
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="STUDENT">
                   <StudentLayout />
                 </ProtectedRoute>
               }
@@ -86,8 +102,26 @@ export default function App() {
               <Route path="settings" element={<AdminSettingsPage />} />
             </Route>
 
+            {/* Parent Protected Routes */}
+            <Route
+              path="/parent"
+              element={
+                <ProtectedRoute allowedRole="PARENT">
+                  <ParentDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/parent/link-status"
+              element={
+                <ProtectedRoute allowedRole="PARENT">
+                  <ParentLinkStatusPage />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Fallback */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<RootRedirect />} />
           </Routes>
         </BrowserRouter>
       </CampusCareProvider>

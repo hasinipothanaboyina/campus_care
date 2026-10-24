@@ -25,6 +25,7 @@ export const SuggestionsPage: React.FC = () => {
   const [category, setCategory] = useState<SuggestionCategory>('Library');
   const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const suggestions = submissions.filter(s => s.type === 'suggestion');
 
@@ -33,17 +34,24 @@ export const SuggestionsPage: React.FC = () => {
     if (!title || !description) return;
 
     setLoading(true);
-    await createSuggestion({
-      title,
-      description,
-      category,
-      imageUrl: imageUrl || undefined,
-    });
-    setLoading(false);
-    setTitle('');
-    setDescription('');
-    setImageUrl('');
-    setShowForm(false);
+    setFormError(null);
+    try {
+      await createSuggestion({
+        title,
+        description,
+        category,
+        imageUrl: imageUrl || undefined,
+      });
+      setTitle('');
+      setDescription('');
+      setImageUrl('');
+      setShowForm(false);
+    } catch (err: any) {
+      console.error('Failed to submit suggestion:', err);
+      setFormError(err.message || 'Failed to submit suggestion to database.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -125,6 +133,12 @@ export const SuggestionsPage: React.FC = () => {
               className="w-full px-4 py-2.5 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-600"
             />
           </div>
+
+          {formError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl">
+              {formError}
+            </div>
+          )}
 
           <button
             type="submit"

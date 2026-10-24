@@ -114,7 +114,7 @@ export const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
           )}
 
           {/* Assignment Information */}
-          {(submission.assignedTo || submission.assignedTeam) && (
+          {(submission.assignedTo || submission.assignedTeam || submission.resolution?.responsiblePerson) && (
             <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
@@ -123,7 +123,7 @@ export const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
                 <div>
                   <span className="font-bold text-purple-900">Assigned Maintenance Handler</span>
                   <p className="text-purple-800 mt-0.5">
-                    {submission.assignedTo} ({submission.assignedTeam || 'CMC Team'})
+                    {submission.assignedTo || submission.resolution?.responsiblePerson} ({submission.assignedTeam || (submission.resolution ? 'Facilities Maintenance' : 'CMC Team')})
                   </p>
                 </div>
               </div>

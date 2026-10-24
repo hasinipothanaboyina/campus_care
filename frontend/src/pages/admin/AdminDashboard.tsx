@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCampusCare } from '../../context/CampusCareContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
@@ -15,12 +15,36 @@ import {
   TrendingUp,
   Sparkles,
   MapPin,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+  GraduationCap,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
-  const { submissions, recurringIssues, insights } = useCampusCare();
+  const { submissions, recurringIssues, insights, refreshData, isLoadingData, updateSubmissionStatus } = useCampusCare();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  const handleQuickVerify = async (id: string) => {
+    await updateSubmissionStatus(id, 'Verified', 'Verified by CMC Admin. Queued for team assignment.');
+  };
 
   const totalCount = submissions.length;
+  const parentCount = submissions.filter(
+    s => s.studentName?.toLowerCase().includes('parent') || s.id.startsWith('CC-PAR') || s.title.startsWith('[Faculty Feedback]')
+  ).length;
+  const studentCount = totalCount - parentCount;
+
   const openCount = submissions.filter(
     s => s.status === 'Submitted' || s.status === 'Under Review' || s.status === 'Verified'
   ).length;
@@ -39,7 +63,7 @@ export const AdminDashboard: React.FC = () => {
     .sort((a, b) => b.supportCount - a.supportCount)
     .slice(0, 4);
 
-  const recent = [...submissions].slice(0, 5);
+  const recent = [...submissions].slice(0, 6);
 
   return (
     <div className="space-y-8">
@@ -51,11 +75,19 @@ export const AdminDashboard: React.FC = () => {
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold">Campus Management Control Center</h1>
           <p className="text-slate-300 text-xs sm:text-sm">
-            Review, verify, prioritize, assign, and resolve student concerns backed by real-time campus data.
+            Review, verify, prioritize, assign, and resolve student & parent concerns backed by live Supabase database sync.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing || isLoadingData}
+            className="px-3.5 py-2.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all flex items-center gap-2 border border-slate-700 shadow"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isRefreshing || isLoadingData ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing || isLoadingData ? 'Syncing...' : 'Sync Live DB'}</span>
+          </button>
           <Link
             to="/admin/cmc-insights"
             className="px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow transition-all flex items-center gap-2"
@@ -74,14 +106,23 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Real DB Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>Total Concerns</span>
+            <span>Total Logged</span>
             <Layers className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-2">{totalCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Logged in database</p>
+          <p className="text-[11px] text-slate-400 mt-1">Total DB records</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+            <span>Parent Reports</span>
+            <Users className="w-4 h-4 text-purple-500" />
+          </div>
+          <div className="text-2xl font-bold text-purple-700 mt-2">{parentCount}</div>
+          <p className="text-[11px] text-purple-600 mt-1">Concerns & Feedback</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
@@ -99,7 +140,7 @@ export const AdminDashboard: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-2xl font-bold text-rose-600 mt-2">{highPriorityCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Immediate action needed</p>
+          <p className="text-[11px] text-slate-400 mt-1">Immediate action</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
@@ -117,7 +158,7 @@ export const AdminDashboard: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold text-emerald-600 mt-2">{resolvedCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Successfully completed</p>
+          <p className="text-[11px] text-slate-400 mt-1">Completed</p>
         </div>
       </div>
 
@@ -182,29 +223,63 @@ export const AdminDashboard: React.FC = () => {
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="divide-y divide-slate-100">
-                {recent.map(item => (
-                  <div key={item.id} className="p-4 hover:bg-slate-50/50 transition-colors space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-slate-400">{item.id}</span>
-                        <StatusBadge status={item.status} size="sm" />
-                        <PriorityBadge priority={item.priority} score={item.priorityScore} />
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-medium">{new Date(item.createdAt).toLocaleDateString()}</span>
-                    </div>
+                {recent.map(item => {
+                  const isParent = Boolean(
+                    item.studentName?.toLowerCase().includes('parent') ||
+                    item.id.startsWith('CC-PAR') ||
+                    item.title.startsWith('[Faculty Feedback]')
+                  );
 
-                    <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
-                    <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        {item.location}
-                      </span>
-                      <span className="flex items-center gap-1 font-semibold text-indigo-600">
-                        <ThumbsUp className="w-3.5 h-3.5" /> {item.supportCount} Supports
-                      </span>
+                  return (
+                    <div key={item.id} className="p-4 hover:bg-slate-50/50 transition-colors space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold text-slate-400">{item.id}</span>
+                          <StatusBadge status={item.status} size="sm" />
+                          <PriorityBadge priority={item.priority} score={item.priorityScore} />
+                          {isParent ? (
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                              👨‍👩‍👧 Parent Report
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                              🎓 Student: {item.studentRollNumber || 'Student'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400 font-medium">{new Date(item.createdAt).toLocaleDateString()}</span>
+                          {item.status === 'Submitted' && (
+                            <button
+                              onClick={() => handleQuickVerify(item.id)}
+                              className="px-2 py-0.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-all flex items-center gap-1"
+                              title="Verify Concern"
+                            >
+                              <ShieldCheck className="w-3 h-3" />
+                              <span>Verify</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
+                      <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          {item.location}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-slate-500">
+                            By: {item.studentName || 'Campus User'}
+                          </span>
+                          <span className="flex items-center gap-1 font-semibold text-indigo-600">
+                            <ThumbsUp className="w-3.5 h-3.5" /> {item.supportCount} Supports
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

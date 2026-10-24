@@ -21,7 +21,16 @@ export const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to={user?.role === 'ADMIN' || user?.role === 'CMC' ? '/admin' : '/dashboard'} className="flex items-center gap-3">
+          <Link
+            to={
+              user?.role === 'ADMIN' || user?.role === 'CMC'
+                ? '/admin'
+                : user?.role === 'PARENT'
+                ? '/parent'
+                : '/dashboard'
+            }
+            className="flex items-center gap-3"
+          >
             <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-md">
               <Shield className="w-5 h-5 text-indigo-400" />
             </div>
@@ -29,7 +38,11 @@ export const Navbar: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold tracking-tight text-slate-900">CampusCare</span>
                 <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase bg-slate-100 text-slate-700 rounded border border-slate-200">
-                  {user?.role === 'ADMIN' || user?.role === 'CMC' ? 'CMC Admin' : 'Student Portal'}
+                  {user?.role === 'ADMIN' || user?.role === 'CMC'
+                    ? 'CMC Admin'
+                    : user?.role === 'PARENT'
+                    ? 'Parent Portal'
+                    : 'Student Portal'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 hidden sm:block">

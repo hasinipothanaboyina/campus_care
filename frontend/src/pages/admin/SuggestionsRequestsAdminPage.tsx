@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCampusCare } from '../../context/CampusCareContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Lightbulb, Sparkles, ThumbsUp, Check, X, CheckCircle2 } from 'lucide-react';
 import { SubmissionStatus } from '../../types';
 
 export const SuggestionsRequestsAdminPage: React.FC = () => {
-  const { submissions, updateSubmissionStatus } = useCampusCare();
+  const { submissions, updateSubmissionStatus, refreshData } = useCampusCare();
   const [activeTab, setActiveTab] = useState<'suggestions' | 'requests'>('suggestions');
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const suggestions = submissions.filter(s => s.type === 'suggestion');
   const requests = submissions.filter(s => s.type === 'improvement_request');

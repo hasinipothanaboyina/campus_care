@@ -1,23 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCampusCare } from '../context/CampusCareContext';
 import { useAuth } from '../context/AuthContext';
 import { Submission, SubmissionStatus, SubmissionType } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { PriorityBadge } from '../components/common/PriorityBadge';
 import { SubmissionDetailModal } from './SubmissionDetailModal';
-import { Search, Filter, ThumbsUp, MapPin, ExternalLink, Calendar } from 'lucide-react';
+import { Search, Filter, ThumbsUp, MapPin, ExternalLink, Calendar, RefreshCw } from 'lucide-react';
 import { EmptyState } from '../components/common/EmptyState';
 
 export const MySubmissionsPage: React.FC = () => {
-  const { submissions, supportSubmission } = useCampusCare();
+  const { submissions, supportSubmission, refreshData, isLoadingData } = useCampusCare();
   const { user } = useAuth();
 
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'issue' | 'suggestion' | 'improvement_request'>('all');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const mySubmissions = submissions.filter(s => s.studentId === user?.id);
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshData();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const mySubmissions = submissions.filter(
+    s => s.studentId === user?.id || (user?.studentId && s.studentRollNumber === user.studentId)
+  );
 
   const filtered = mySubmissions.filter(item => {
     if (activeTab !== 'all' && item.type !== activeTab) return false;
@@ -28,7 +41,8 @@ export const MySubmissionsPage: React.FC = () => {
       const matchDesc = item.description.toLowerCase().includes(q);
       const matchId = item.id.toLowerCase().includes(q);
       const matchCat = item.category.toLowerCase().includes(q);
-      return matchTitle || matchDesc || matchId || matchCat;
+      const matchLoc = item.location ? item.location.toLowerCase().includes(q) : false;
+      return matchTitle || matchDesc || matchId || matchCat || matchLoc;
     }
     return true;
   });
@@ -36,11 +50,22 @@ export const MySubmissionsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">My Submissions & Trackers</h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Track real-time resolution progress for your reported issues, suggestions, and improvement requests.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">My Submissions & Trackers</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Track real-time resolution progress for your reported issues, suggestions, and improvement requests.
+          </p>
+        </div>
+
+        <button
+          onClick={handleManualRefresh}
+          disabled={isRefreshing || isLoadingData}
+          className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-sm flex items-center gap-1.5 transition-all self-start sm:self-center disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing || isLoadingData ? 'animate-spin text-indigo-600' : ''}`} />
+          <span>{isRefreshing || isLoadingData ? 'Refreshing...' : 'Refresh Status'}</span>
+        </button>
       </div>
 
       {/* Tabs & Search Controls */}

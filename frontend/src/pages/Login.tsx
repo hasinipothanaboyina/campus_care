@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, User, Lock, ArrowRight, CheckCircle2, HelpCircle, BookOpen } from 'lucide-react';
+import { Shield, User, Lock, ArrowRight, CheckCircle2, HelpCircle, BookOpen, Users } from 'lucide-react';
 import { UserRole } from '../types';
 
 export const Login: React.FC = () => {
@@ -19,7 +19,13 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier || !password) {
-      setError(role === 'ADMIN' ? 'Please enter your Admin ID and password.' : 'Please enter your Roll Number and password.');
+      setError(
+        role === 'ADMIN'
+          ? 'Please enter your Admin ID and password.'
+          : role === 'PARENT'
+          ? 'Please enter your Parent Email or Mobile and password.'
+          : 'Please enter your Roll Number and password.'
+      );
       return;
     }
 
@@ -32,6 +38,8 @@ export const Login: React.FC = () => {
       if (res.success) {
         if (role === 'ADMIN' || role === 'CMC') {
           navigate('/admin');
+        } else if (role === 'PARENT') {
+          navigate('/parent');
         } else {
           navigate('/dashboard');
         }
@@ -48,7 +56,7 @@ export const Login: React.FC = () => {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier) {
-      setError(role === 'ADMIN' ? 'Please enter your Admin ID to reset password.' : 'Please enter your Roll Number to reset password.');
+      setError('Please enter your identifier above to reset your password.');
       return;
     }
     const res = await resetPassword(identifier);
@@ -74,8 +82,8 @@ export const Login: React.FC = () => {
 
         {/* Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xl p-8">
-          {/* Role Toggle Switch */}
-          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl mb-6">
+          {/* 3-Way Role Switch */}
+          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl mb-6">
             <button
               type="button"
               onClick={() => {
@@ -89,7 +97,22 @@ export const Login: React.FC = () => {
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              Student Sign In
+              Student
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRole('PARENT');
+                setIdentifier('');
+                setError('');
+              }}
+              className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                role === 'PARENT'
+                  ? 'bg-white text-indigo-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Parent
             </button>
             <button
               type="button"
@@ -104,7 +127,7 @@ export const Login: React.FC = () => {
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              Admin Sign In
+              Admin
             </button>
           </div>
 
@@ -124,21 +147,33 @@ export const Login: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {role === 'ADMIN' ? 'Admin ID' : 'Student Roll Number'}
+                {role === 'ADMIN'
+                  ? 'Admin ID or Email'
+                  : role === 'PARENT'
+                  ? 'Parent Email Address or Phone'
+                  : 'Student Roll Number'}
               </label>
               <div className="relative">
                 {role === 'ADMIN' ? (
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                ) : role === 'PARENT' ? (
+                  <Users className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 ) : (
                   <BookOpen className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 )}
                 <input
-                  type="text"
+                  type={role === 'PARENT' ? 'text' : 'text'}
                   required
                   value={identifier}
-                  onChange={e => setIdentifier(e.target.value.toUpperCase())}
-                  maxLength={role === 'ADMIN' ? 12 : 10}
-                  placeholder={role === 'ADMIN' ? 'Enter your Admin ID' : 'Enter your roll number'}
+                  onChange={e => setIdentifier(role === 'STUDENT' ? e.target.value.toUpperCase() : e.target.value)}
+                  maxLength={role === 'STUDENT' ? 12 : 60}
+                  placeholder={
+                    role === 'ADMIN'
+                      ? 'Enter your Admin ID or email'
+                      : role === 'PARENT'
+                      ? 'e.g. parent@example.com or mobile'
+                      : 'Enter your roll number'
+                  }
                   className="w-full pl-9 pr-4 py-2.5 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
                 />
               </div>
@@ -173,7 +208,15 @@ export const Login: React.FC = () => {
               disabled={loading}
               className="w-full py-3 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
             >
-              <span>{loading ? 'Authenticating...' : role === 'ADMIN' ? 'Sign in to Admin Portal' : 'Sign in to Student Portal'}</span>
+              <span>
+                {loading
+                  ? 'Authenticating...'
+                  : role === 'ADMIN'
+                  ? 'Sign in to Admin Portal'
+                  : role === 'PARENT'
+                  ? 'Sign in to Parent Portal'
+                  : 'Sign in to Student Portal'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -186,7 +229,7 @@ export const Login: React.FC = () => {
                 Reset Password
               </h3>
               <p className="text-[11px] text-slate-500">
-                Enter your {role === 'ADMIN' ? 'Admin ID' : 'Student Roll Number'} above and click below to send reset instructions.
+                Enter your identifier above and click below to send reset instructions.
               </p>
               <button
                 type="button"
@@ -198,12 +241,21 @@ export const Login: React.FC = () => {
             </div>
           )}
 
-          {/* Registration link for students */}
+          {/* Registration Links */}
           {role === 'STUDENT' && (
             <div className="mt-6 text-center text-xs text-slate-500 border-t border-slate-100 pt-4">
               New student?{' '}
               <Link to="/register" className="font-semibold text-indigo-600 hover:text-indigo-800">
                 Create a student profile
+              </Link>
+            </div>
+          )}
+
+          {role === 'PARENT' && (
+            <div className="mt-6 text-center text-xs text-slate-500 border-t border-slate-100 pt-4">
+              New parent or guardian?{' '}
+              <Link to="/register?role=parent" className="font-semibold text-indigo-600 hover:text-indigo-800">
+                Register Parent Account
               </Link>
             </div>
           )}

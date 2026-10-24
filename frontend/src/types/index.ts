@@ -1,18 +1,63 @@
-export type UserRole = 'STUDENT' | 'ADMIN' | 'CMC' | 'student' | 'admin' | 'cmc';
+export type UserRole = 'STUDENT' | 'ADMIN' | 'CMC' | 'PARENT' | 'student' | 'admin' | 'cmc' | 'parent';
 
 export interface UserProfile {
   id: string;
   fullName: string;
   studentId?: string; // Roll number for students
   email: string;
+  phone?: string;
   department?: string;
   year?: string;
   section?: string;
   role: UserRole;
   avatarUrl?: string;
   isApproved?: boolean;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   lastLogin?: string;
   createdAt: string;
+}
+
+export interface ParentStudentLink {
+  id: string;
+  parentId: string;
+  studentId: string;
+  studentRollNumber: string;
+  verificationStatus: 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
+  verifiedBy?: string;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+  // Joined display fields
+  parentName?: string;
+  parentEmail?: string;
+  parentPhone?: string;
+  studentName?: string;
+  studentDepartment?: string;
+  studentYear?: string;
+}
+
+export interface AcademicRecordItem {
+  id?: string;
+  subjectCode: string;
+  subjectName: string;
+  internalMarks?: number;
+  maxInternalMarks?: number;
+  externalMarks?: number;
+  maxExternalMarks?: number;
+  totalMarks?: number;
+  maxMarks?: number;
+  grade?: string;
+  credits?: number;
+  semester?: string;
+}
+
+export interface AttendanceRecordItem {
+  id?: string;
+  date: string;
+  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
+  subject?: string;
+  period?: number;
+  remarks?: string;
 }
 
 export type SubmissionType = 'issue' | 'suggestion' | 'improvement_request';
@@ -141,3 +186,5 @@ export interface CampusInsight {
   metric?: string;
   actionableSuggestion?: string;
 }
+
+export { CAMPUS_BUILDINGS, type CampusBuilding } from '../constants/locations';
