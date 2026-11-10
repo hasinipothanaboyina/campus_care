@@ -220,7 +220,7 @@ export const Register: React.FC = () => {
                     required
                     value={studentForm.email}
                     onChange={e => setStudentForm({ ...studentForm, email: e.target.value })}
-                    placeholder="student@campuscare.edu"
+                    placeholder="your.email@domain.com"
                     className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>

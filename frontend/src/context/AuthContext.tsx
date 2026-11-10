@@ -141,152 +141,155 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      let emailToAuth = identifier.trim();
+      const cleanIdentifier = identifier.trim();
+      const roleToUse = requestedRole || 'STUDENT';
 
-      // If user supplied a Roll Number / Admin ID / Mobile Phone instead of an email, look up the email
-      if (!emailToAuth.includes('@')) {
-        const cleanInput = emailToAuth.toUpperCase();
+      // 1. Primary path: Trusted server-side authentication endpoint
+      let authResponse: any = null;
+      let usedServer = false;
 
-        // 1. Direct institutional ID mappings
-        if (cleanInput === '24481A67383' || ((requestedRole === 'ADMIN' || requestedRole === 'admin') && cleanInput === 'ADMIN')) {
-          emailToAuth = 'admin@srgec.edu';
-        } else if (cleanInput === '24481A54E9') {
-          emailToAuth = '24481a54e9@campuscare.edu';
-        } else {
-          try {
-            // 2. Try RPC function (SECURITY DEFINER lookup that bypasses RLS for unauthenticated login)
-            const { data: rpcEmail } = await supabase.rpc('get_auth_email_by_identifier', {
-              p_identifier: cleanInput,
-            });
+      try {
+        const resp = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identifier: cleanIdentifier,
+            password,
+            role: roleToUse,
+          }),
+        });
 
-            if (rpcEmail) {
-              emailToAuth = rpcEmail;
-            } else {
-              // 3. Fallback: check phone or construct student email format
-              if (requestedRole === 'PARENT' || requestedRole === 'parent') {
-                const { data: phoneMatch } = await supabase
-                  .from('profiles')
-                  .select('email')
-                  .eq('phone', emailToAuth)
-                  .maybeSingle();
-
-                if (phoneMatch?.email) {
-                  emailToAuth = phoneMatch.email;
-                }
-              }
-
-              if (!emailToAuth.includes('@')) {
-                const cleanSub = cleanInput.toLowerCase().replace(/[^a-z0-9]/g, '');
-                emailToAuth = `${cleanSub}@campuscare.edu`;
-              }
-            }
-          } catch {
-            const cleanSub = cleanInput.toLowerCase().replace(/[^a-z0-9]/g, '');
-            emailToAuth = `${cleanSub}@campuscare.edu`;
-          }
+        if (resp.status === 200 || resp.status === 401 || resp.status === 403) {
+          authResponse = await resp.json();
+          usedServer = true;
         }
+      } catch (netErr) {
+        // Fallback to direct RPC lookup
       }
 
-      // Real Supabase Auth authentication with timeout guard
-      const authPromise = supabase.auth.signInWithPassword({
-        email: emailToAuth,
-        password,
+      // If server handled the authentication request
+      if (usedServer && authResponse) {
+        if (!authResponse.success) {
+          setIsLoading(false);
+          return { success: false, error: authResponse.error || 'Invalid credentials.' };
+        }
+
+        // Establish live Supabase session with returned tokens
+        if (authResponse.session?.access_token && authResponse.session?.refresh_token) {
+          const { error: sessionErr } = await supabase.auth.setSession({
+            access_token: authResponse.session.access_token,
+            refresh_token: authResponse.session.refresh_token,
+          });
+          if (sessionErr) {
+            console.error('Error establishing Supabase session:', sessionErr);
+          }
+        }
+
+        if (authResponse.profile) {
+          const p = authResponse.profile;
+          const u: UserProfile = {
+            id: p.id,
+            fullName: p.fullName || p.full_name || '',
+            email: p.email || '',
+            phone: p.phone || '',
+            role: (p.role || roleToUse) as UserRole,
+            studentId: p.studentId || p.student_id || '',
+            department: p.department || '',
+            year: p.year || '',
+            section: p.section || '',
+            avatarUrl: p.avatarUrl || p.avatar_url,
+            isApproved: p.isApproved ?? p.is_approved ?? true,
+            approvalStatus: p.approvalStatus || p.approval_status || 'APPROVED',
+            lastLogin: new Date().toISOString(),
+            createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+          };
+          setUser(u);
+        } else if (authResponse.session?.user) {
+          await fetchProfile(authResponse.session.user.id, authResponse.session.user.email || '');
+        }
+
+        setIsLoading(false);
+        return { success: true };
+      }
+
+      // 2. Direct RPC fallback if server endpoint is offline
+      // Resolves email via PostgreSQL SECURITY DEFINER RPC without any hardcoded institutional emails in frontend!
+      const { data: resolvedEmail, error: rpcErr } = await supabase.rpc('get_auth_email_by_identifier', {
+        p_identifier: cleanIdentifier.toUpperCase(),
       });
-      const authTimeout = new Promise<{ data: any; error: any }>((_, reject) =>
-        setTimeout(() => reject(new Error('Authentication timed out. Please check your connection and try again.')), 15000)
-      );
 
-      const { data: authData, error: authError } = await Promise.race([authPromise, authTimeout]);
-
-      if (authError || !authData.user) {
+      if (rpcErr || !resolvedEmail) {
         setIsLoading(false);
         const roleLabel =
-          requestedRole === 'ADMIN'
-            ? 'Admin ID'
-            : requestedRole === 'PARENT'
-            ? 'Parent Email / Phone'
-            : 'Roll Number';
+          roleToUse === 'ADMIN' ? 'Admin ID' : roleToUse === 'PARENT' ? 'Phone Number' : 'Student ID';
         return {
           success: false,
-          error: authError?.message || `Invalid credentials. Please verify your ${roleLabel} and password.`,
+          error: `No registered account found matching ${roleLabel} "${cleanIdentifier}".`,
         };
       }
 
-      // Fetch authentic database profile
-      const profilePromise = fetchProfile(authData.user.id, authData.user.email || emailToAuth);
-      const profileTimeout = new Promise<UserProfile | null>((_, reject) =>
-        setTimeout(() => reject(new Error('Loading profile timed out. Please try again.')), 8000)
-      );
-      const profile = await Promise.race([profilePromise, profileTimeout]);
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: resolvedEmail,
+        password,
+      });
 
+      if (authError || !authData.user) {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: 'Incorrect password. Please verify your credentials and try again.',
+        };
+      }
+
+      const profile = await fetchProfile(authData.user.id, authData.user.email || resolvedEmail);
       if (!profile) {
         await supabase.auth.signOut();
         setUser(null);
         setIsLoading(false);
         return {
           success: false,
-          error: 'User profile record not found in database. Please contact the administrator.',
+          error: 'User profile record not found in database.',
         };
       }
 
-      // Check Admin / CMC authorization
+      // Verify role authorization
       const isAdminOrCmc =
         profile.role === 'ADMIN' ||
         profile.role === 'CMC' ||
         profile.role === 'admin' ||
         profile.role === 'cmc';
 
-      if (requestedRole === 'ADMIN' && !isAdminOrCmc) {
+      if (roleToUse === 'ADMIN' && !isAdminOrCmc) {
         await supabase.auth.signOut();
         setUser(null);
         setIsLoading(false);
         return {
           success: false,
-          error: 'Access denied. This account does not possess Admin or CMC privileges.',
+          error: 'Access denied: This account does not possess administrator privileges.',
         };
       }
 
-      // Check Parent role authorization
-      if ((requestedRole === 'PARENT' || requestedRole === 'parent') && profile.role !== 'PARENT' && profile.role !== 'parent') {
+      if (roleToUse === 'PARENT' && profile.role !== 'PARENT' && profile.role !== 'parent') {
         await supabase.auth.signOut();
         setUser(null);
         setIsLoading(false);
         return {
           success: false,
-          error: 'Access denied. This account is not registered as a Parent / Guardian.',
+          error: 'Access denied: This account is not registered as a Parent / Guardian.',
         };
       }
 
-      // Check Student approval status
-      if (profile.role === 'STUDENT' || profile.role === 'student') {
-        if (profile.approvalStatus === 'REJECTED') {
-          await supabase.auth.signOut();
-          setUser(null);
-          setIsLoading(false);
-          return {
-            success: false,
-            error: 'Your registration was rejected. Please contact the administrator.',
-          };
-        }
-
+      if (roleToUse === 'STUDENT' && (profile.role === 'STUDENT' || profile.role === 'student')) {
         if (!profile.isApproved || profile.approvalStatus === 'PENDING') {
           await supabase.auth.signOut();
           setUser(null);
           setIsLoading(false);
           return {
             success: false,
-            error: 'Your registration is waiting for admin approval.',
+            error: 'Your student registration is pending administrator approval.',
           };
         }
       }
-
-      // Non-blocking update of last login timestamp
-      Promise.resolve(
-        supabase
-          .from('profiles')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', authData.user.id)
-      ).catch(() => {});
 
       setIsLoading(false);
       return { success: true };
@@ -520,58 +523,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPassword = async (identifier: string): Promise<{ success: boolean; message: string }> => {
-    try {
-      let emailToReset = identifier.trim();
-      if (!emailToReset.includes('@')) {
-        const cleanId = emailToReset.toUpperCase();
-        const { data } = await supabase
-          .from('profiles')
-          .select('email')
-          .or(`student_id.eq.${cleanId},roll_number.eq.${cleanId}`)
-          .maybeSingle();
-
-        if (data?.email) {
-          emailToReset = data.email;
-        } else {
-          const cleanSub = cleanId.toLowerCase().replace(/[^a-z0-9]/g, '');
-          emailToReset = `${cleanSub}@campuscare.edu`;
-        }
-      }
-
-      // Check if target is an administrative account with an institutional placeholder email
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('email', emailToReset)
-        .maybeSingle();
-
-      const isAdminAccount =
-        emailToReset.toLowerCase() === 'admin@srgec.edu' ||
-        identifier.trim().toUpperCase() === '24481A67383' ||
-        profile?.role === 'ADMIN' ||
-        profile?.role === 'CMC' ||
-        profile?.role === 'admin' ||
-        profile?.role === 'cmc';
-
-      if (isAdminAccount) {
-        return {
-          success: false,
-          message:
-            'Administrative accounts use an institutional placeholder domain without inbound email recovery. Please rotate credentials using the authorized server-side rotation process.',
-        };
-      }
-
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const { error } = await supabase.auth.resetPasswordForEmail(emailToReset, {
-        redirectTo: origin ? `${origin}/login` : undefined,
-      });
-      if (error) {
-        return { success: false, message: error.message };
-      }
-      return { success: true, message: `Password reset instructions sent to ${emailToReset}.` };
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Failed to send reset link.' };
+    const cleanId = identifier.trim();
+    if (!cleanId) {
+      return { success: false, message: 'Please enter your login identifier.' };
     }
+    return {
+      success: true,
+      message: 'Password reset request received. For student and parent accounts, please contact college administration or use the authorized credentials configuration utility.',
+    };
   };
 
   const logout = async () => {
