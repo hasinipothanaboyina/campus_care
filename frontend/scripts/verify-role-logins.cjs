@@ -25,9 +25,9 @@ for (const p of possibleEnvPaths) {
   }
 }
 
-const adminPass = process.env.ADMIN_PASSWORD || 'srgec@123';
-const studentPass = process.env.STUDENT_PASSWORD || 'Password123!';
-const parentPass = process.env.PARENT_PASSWORD || '';
+const adminPass = process.env.ADMIN_PASSWORD || 'admin@123';
+const studentPass = process.env.STUDENT_PASSWORD || 'student@123';
+const parentPass = process.env.PARENT_PASSWORD || 'parent@123';
 
 // Institutional registry
 const INSTITUTIONAL_REGISTRY = {
