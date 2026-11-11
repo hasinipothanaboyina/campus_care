@@ -19,6 +19,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { SubmissionDetailModal } from '../SubmissionDetailModal';
 import { supabase } from '../../lib/supabase';
 import {
+  ClipboardList,
   Users,
   Shield,
   ShieldCheck,
@@ -58,15 +59,22 @@ import {
   Bus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import {
+  FeedbackForm,
+  FeedbackQuestion,
+  FeedbackResponse,
+  getFeedbackForms,
+  getFormDetails,
+  submitFeedbackResponse,
+} from '../../services/feedbackService';
 
 type ParentDashboardTab =
   | 'overview'
   | 'academics'
   | 'attendance'
-  | 'faculty_feedback'
+  | 'college_feedback'
   | 'college_concerns'
-  | 'notifications'
-  | 'ward_reports';
+  | 'notifications';
 
 export const ParentDashboard: React.FC = () => {
   const { user, logout, requestStudentLink, fetchMyParentLinks } = useAuth();
@@ -102,17 +110,174 @@ export const ParentDashboard: React.FC = () => {
   const [submittingLink, setSubmittingLink] = useState(false);
   const [linkMsg, setLinkMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Form State: Faculty Feedback
-  const [facultySubTab, setFacultySubTab] = useState<'history' | 'new'>('new');
-  const [facultySubject, setFacultySubject] = useState('');
-  const [facultyName, setFacultyName] = useState('');
-  const [facultyDept, setFacultyDept] = useState('');
-  const [facultyCategory, setFacultyCategory] = useState('Teaching Quality & Clarity');
-  const [facultyConfidentiality, setFacultyConfidentiality] = useState<'Standard' | 'Urgent' | 'Confidential'>('Standard');
-  const [facultyTitle, setFacultyTitle] = useState('');
-  const [facultyDescription, setFacultyDescription] = useState('');
-  const [submittingFaculty, setSubmittingFaculty] = useState(false);
-  const [facultyFeedbackMsg, setFacultyFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  // College Feedback State
+  const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+  const [loadingFeedbackForms, setLoadingFeedbackForms] = useState(false);
+  const [feedbackStatusTab, setFeedbackStatusTab] = useState<'available' | 'submitted' | 'closed'>('available');
+  const [selectedFormForFill, setSelectedFormForFill] = useState<FeedbackForm | null>(null);
+  const [activeFillResponses, setActiveFillResponses] = useState<Record<string, { ratingValue?: number; selectedOption?: string; textResponse?: string }>>({});
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackErrorMsg, setFeedbackErrorMsg] = useState<string | null>(null);
+  const [feedbackSuccessModal, setFeedbackSuccessModal] = useState<{ show: boolean; title: string; formId: string } | null>(null);
+  const [selectedSubmittedView, setSelectedSubmittedView] = useState<{ form: FeedbackForm; myResponse?: FeedbackResponse } | null>(null);
+  const [loadingSubmittedView, setLoadingSubmittedView] = useState(false);
+
+  // Load Feedback Forms
+  const loadFeedbackForms = useCallback(async () => {
+    if (!user) return;
+    setLoadingFeedbackForms(true);
+    try {
+      const data = await getFeedbackForms('PARENT', user.id);
+      setFeedbackForms(data);
+    } catch (e) {
+      console.error('Error loading feedback forms:', e);
+    } finally {
+      setLoadingFeedbackForms(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'college_feedback') {
+      loadFeedbackForms();
+    }
+  }, [activeTab, loadFeedbackForms]);
+
+  const availableFeedbackForms = useMemo(() => {
+    return feedbackForms.filter(f => f.status === 'PUBLISHED' && !f.hasSubmitted);
+  }, [feedbackForms]);
+
+  const submittedFeedbackForms = useMemo(() => {
+    return feedbackForms.filter(f => f.hasSubmitted);
+  }, [feedbackForms]);
+
+  const closedFeedbackForms = useMemo(() => {
+    return feedbackForms.filter(
+      f => f.status === 'CLOSED' || (f.status === 'PUBLISHED' && f.deadline && new Date(f.deadline) < new Date() && !f.hasSubmitted)
+    );
+  }, [feedbackForms]);
+
+  const handleStartFillForm = (form: FeedbackForm) => {
+    setSelectedFormForFill(form);
+    setFeedbackErrorMsg(null);
+    const initialAns: Record<string, { ratingValue?: number; selectedOption?: string; textResponse?: string }> = {};
+    form.questions?.forEach(q => {
+      initialAns[q.id] = {
+        ratingValue: q.questionType === 'rating' ? 5 : undefined,
+        selectedOption: q.questionType === 'multiple_choice' && q.options.length > 0 ? q.options[0] : undefined,
+        textResponse: '',
+      };
+    });
+    setActiveFillResponses(initialAns);
+  };
+
+  const handleUpdateFillAnswer = (
+    qId: string,
+    update: { ratingValue?: number; selectedOption?: string; textResponse?: string }
+  ) => {
+    setActiveFillResponses(prev => ({
+      ...prev,
+      [qId]: {
+        ...prev[qId],
+        ...update,
+      },
+    }));
+  };
+
+  const handleSubmitFeedbackAnswers = async () => {
+    if (!selectedFormForFill || !user) return;
+
+    for (const q of selectedFormForFill.questions || []) {
+      if (q.isRequired) {
+        const a = activeFillResponses[q.id];
+        if (!a) {
+          setFeedbackErrorMsg(`Please answer question "${q.questionText}".`);
+          return;
+        }
+        if (q.questionType === 'rating' && !a.ratingValue) {
+          setFeedbackErrorMsg(`Please provide a rating for "${q.questionText}".`);
+          return;
+        }
+        if (q.questionType === 'multiple_choice' && !a.selectedOption) {
+          setFeedbackErrorMsg(`Please select an option for "${q.questionText}".`);
+          return;
+        }
+        if (q.questionType === 'text' && (!a.textResponse || !a.textResponse.trim())) {
+          setFeedbackErrorMsg(`Please enter a response for "${q.questionText}".`);
+          return;
+        }
+      }
+    }
+
+    setSubmittingFeedback(true);
+    setFeedbackErrorMsg(null);
+
+    const answersPayload = Object.entries(activeFillResponses).map(([qId, val]) => ({
+      questionId: qId,
+      ratingValue: val.ratingValue ?? null,
+      selectedOption: val.selectedOption ?? null,
+      textResponse: val.textResponse?.trim() || null,
+    }));
+
+    try {
+      const res = await submitFeedbackResponse({
+        formId: selectedFormForFill.id,
+        parentId: user.id,
+        parentName: user.fullName || 'Parent',
+        parentPhone: user.phone || '',
+        answers: answersPayload,
+      });
+
+      if (res.success) {
+        setFeedbackSuccessModal({
+          show: true,
+          title: selectedFormForFill.title,
+          formId: selectedFormForFill.id,
+        });
+        setSelectedFormForFill(null);
+        await loadFeedbackForms();
+      } else {
+        setFeedbackErrorMsg(res.error || 'Failed to submit feedback response.');
+      }
+    } catch (err: any) {
+      setFeedbackErrorMsg(err.message || 'Error submitting feedback.');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const handleViewSubmittedResponse = async (form: FeedbackForm) => {
+    setLoadingSubmittedView(true);
+    try {
+      const details = await getFormDetails(form.id, user?.id);
+      if (details) {
+        setSelectedSubmittedView({ form: details.form, myResponse: details.myResponse });
+      }
+    } catch (e) {
+      console.error('Error fetching submitted response:', e);
+    } finally {
+      setLoadingSubmittedView(false);
+    }
+  };
+
+  const handleOpenFeedbackFromNotification = async (submissionId?: string | null) => {
+    setActiveTab('college_feedback');
+    setSelectedFormForFill(null);
+    setSelectedSubmittedView(null);
+
+    const formId = submissionId && submissionId.startsWith('FB-') ? submissionId.replace('FB-', '') : null;
+    if (formId) {
+      const details = await getFormDetails(formId, user?.id);
+      if (details?.form) {
+        if (details.form.hasSubmitted) {
+          setFeedbackStatusTab('submitted');
+          setSelectedSubmittedView({ form: details.form, myResponse: details.myResponse });
+        } else {
+          setFeedbackStatusTab('available');
+          handleStartFillForm(details.form);
+        }
+      }
+    }
+  };
 
   // Form State: College Suggestion / Complaint
   const [collegeSubTab, setCollegeSubTab] = useState<'history' | 'new'>('new');
@@ -721,18 +886,21 @@ export const ParentDashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('faculty_feedback')}
+              onClick={() => {
+                setActiveTab('college_feedback');
+                setSelectedFormForFill(null);
+              }}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-                activeTab === 'faculty_feedback'
+                activeTab === 'college_feedback'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Faculty Feedback</span>
-              {facultyFeedbackSubmissions.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-bold bg-indigo-100 text-indigo-700">
-                  {facultyFeedbackSubmissions.length}
+              <ClipboardList className="w-3.5 h-3.5" />
+              <span>College Feedback</span>
+              {availableFeedbackForms.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-bold bg-amber-500 text-white">
+                  {availableFeedbackForms.length} New
                 </span>
               )}
             </button>
@@ -771,23 +939,7 @@ export const ParentDashboard: React.FC = () => {
               )}
             </button>
 
-            <button
-              onClick={() => setActiveTab('ward_reports')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-                activeTab === 'ward_reports'
-                  ? 'bg-slate-800 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="View issues and suggestions submitted by your child"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Ward Reports</span>
-              {wardSubmissions.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-bold bg-slate-200 text-slate-700">
-                  {wardSubmissions.length}
-                </span>
-              )}
-            </button>
+
           </div>
         </div>
       </nav>
@@ -916,13 +1068,13 @@ export const ParentDashboard: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   onClick={() => {
-                    setActiveTab('faculty_feedback');
-                    setFacultySubTab('new');
+                    setActiveTab('college_feedback');
+                    setSelectedFormForFill(null);
                   }}
                   className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors"
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>Faculty Feedback</span>
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  <span>College Feedback</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1137,13 +1289,13 @@ export const ParentDashboard: React.FC = () => {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('faculty_feedback');
-                    setFacultySubTab('new');
+                    setActiveTab('college_feedback');
+                    setSelectedFormForFill(null);
                   }}
                   className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors self-start"
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>Submit Academic Concern</span>
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  <span>College Feedback Surveys</span>
                 </button>
               </div>
 
@@ -1294,282 +1446,366 @@ export const ParentDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: FACULTY FEEDBACK & COMPLAINTS */}
-        {activeTab === 'faculty_feedback' && (
+                {/* TAB 4: COLLEGE FEEDBACK */}
+        {activeTab === 'college_feedback' && (
           <div className="space-y-6">
-            {/* Header & Sub-Tab Switcher */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-indigo-600" />
-                    Faculty Feedback & Academic Concerns
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Confidential channel to share feedback, suggestions, or concerns regarding teaching, syllabus coverage,
-                    or academic guidance.
-                  </p>
+            {!selectedFormForFill ? (
+              <>
+                {/* Header & Status Switcher */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <ClipboardList className="w-5 h-5 text-indigo-600" />
+                        College Feedback Surveys
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+                        Official surveys published by college administration to collect parent opinions on campus infrastructure,
+                        safety, transport, hostels, and academic environment.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={loadFeedbackForms}
+                      disabled={loadingFeedbackForms}
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors self-start sm:self-auto"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingFeedbackForms ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+
+                  {/* 3 Status Filter Tabs */}
+                  <div className="flex items-center gap-2 pt-4 overflow-x-auto">
+                    <button
+                      onClick={() => setFeedbackStatusTab('available')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-2 transition-all ${
+                        feedbackStatusTab === 'available'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 bg-slate-100'
+                      }`}
+                    >
+                      <span>Available Feedback</span>
+                      <span
+                        className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                          feedbackStatusTab === 'available' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {availableFeedbackForms.length}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setFeedbackStatusTab('submitted')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-2 transition-all ${
+                        feedbackStatusTab === 'submitted'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 bg-slate-100'
+                      }`}
+                    >
+                      <span>Submitted Feedback</span>
+                      <span
+                        className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                          feedbackStatusTab === 'submitted' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {submittedFeedbackForms.length}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setFeedbackStatusTab('closed')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-2 transition-all ${
+                        feedbackStatusTab === 'closed'
+                          ? 'bg-slate-800 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 bg-slate-100'
+                      }`}
+                    >
+                      <span>Closed Surveys</span>
+                      <span
+                        className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                          feedbackStatusTab === 'closed' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {closedFeedbackForms.length}
+                      </span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+
+                {/* Sub-tab 1: Available Feedback List */}
+                {feedbackStatusTab === 'available' && (
+                  <div>
+                    {availableFeedbackForms.length === 0 ? (
+                      <EmptyState
+                        title="No Pending Surveys"
+                        description="You are all caught up! There are currently no pending institutional surveys awaiting your response."
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {availableFeedbackForms.map(form => (
+                          <div
+                            key={form.id}
+                            className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-2.5">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                  Open for Response
+                                </span>
+                                {form.deadline && (
+                                  <span className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>Due: {new Date(form.deadline).toLocaleDateString()}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              <h3 className="text-sm font-bold text-slate-900 leading-snug">{form.title}</h3>
+                              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{form.description}</p>
+
+                              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <HelpCircle className="w-3 h-3" />
+                                  <span>{form.questions?.length || 0} Questions</span>
+                                </span>
+                                <span className="text-indigo-600 font-medium">Estimated 2-3 mins</span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleStartFillForm(form)}
+                              className="mt-5 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                              <span>Complete Feedback</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-tab 2: Submitted Feedback List */}
+                {feedbackStatusTab === 'submitted' && (
+                  <div>
+                    {submittedFeedbackForms.length === 0 ? (
+                      <EmptyState
+                        title="No Submitted Surveys Yet"
+                        description="You have not submitted responses to any college feedback surveys yet. Active surveys will appear in the Available tab."
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {submittedFeedbackForms.map(form => (
+                          <div
+                            key={form.id}
+                            className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-2.5">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-indigo-600" />
+                                  <span>Submitted</span>
+                                </span>
+                              </div>
+
+                              <h3 className="text-sm font-bold text-slate-900 leading-snug">{form.title}</h3>
+                              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{form.description}</p>
+                            </div>
+
+                            <button
+                              onClick={() => handleViewSubmittedResponse(form)}
+                              className="mt-5 w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View My Submitted Answers</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-tab 3: Closed Feedback List */}
+                {feedbackStatusTab === 'closed' && (
+                  <div>
+                    {closedFeedbackForms.length === 0 ? (
+                      <EmptyState
+                        title="No Closed Surveys"
+                        description="There are currently no closed or archived surveys."
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {closedFeedbackForms.map(form => (
+                          <div
+                            key={form.id}
+                            className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-2.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 uppercase">
+                                Closed / Concluded
+                              </span>
+                              {form.deadline && (
+                                <span className="text-[11px] text-slate-400">
+                                  Ended: {new Date(form.deadline).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+
+                            <h3 className="text-sm font-bold text-slate-800 leading-snug">{form.title}</h3>
+                            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{form.description}</p>
+
+                            <p className="mt-4 text-[11px] text-slate-400 italic">
+                              Submissions for this topic have closed. Thank you for your interest.
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* FORM FILLING VIEW */
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+                <div className="flex items-center justify-between pb-5 border-b border-slate-100">
+                  <div>
+                    <button
+                      onClick={() => setSelectedFormForFill(null)}
+                      className="text-xs font-semibold text-slate-500 hover:text-indigo-600 flex items-center gap-1 mb-2 transition-colors"
+                    >
+                      <span>← Back to Available Surveys</span>
+                    </button>
+                    <h2 className="text-lg font-bold text-slate-900">{selectedFormForFill.title}</h2>
+                    <p className="text-xs text-slate-500 mt-1 max-w-2xl">{selectedFormForFill.description}</p>
+                  </div>
+                </div>
+
+                {feedbackErrorMsg && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{feedbackErrorMsg}</span>
+                  </div>
+                )}
+
+                {/* Questions List */}
+                <div className="space-y-6">
+                  {selectedFormForFill.questions?.map((q, idx) => {
+                    const ans = activeFillResponses[q.id] || {};
+
+                    return (
+                      <div key={q.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-slate-900 leading-snug">
+                            {idx + 1}. {q.questionText} {q.isRequired && <span className="text-rose-500">*</span>}
+                          </p>
+                        </div>
+
+                        {/* RATING QUESTION */}
+                        {q.questionType === 'rating' && (
+                          <div className="pt-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {[1, 2, 3, 4, 5].map(starVal => {
+                                const isSelected = ans.ratingValue === starVal;
+                                const ratingLabels = ['', 'Poor', 'Fair', 'Average', 'Good', 'Excellent'];
+                                return (
+                                  <button
+                                    key={starVal}
+                                    type="button"
+                                    onClick={() => handleUpdateFillAnswer(q.id, { ratingValue: starVal })}
+                                    className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                      isSelected
+                                        ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-400/40'
+                                        : 'bg-white border border-slate-200 text-slate-700 hover:border-amber-300'
+                                    }`}
+                                  >
+                                    <Star className={`w-4 h-4 ${isSelected ? 'fill-white text-white' : 'text-amber-400 fill-amber-400'}`} />
+                                    <span>{starVal} - {ratingLabels[starVal]}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* MULTIPLE CHOICE QUESTION */}
+                        {q.questionType === 'multiple_choice' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                            {q.options.map((opt, optIdx) => {
+                              const isSelected = ans.selectedOption === opt;
+                              return (
+                                <button
+                                  key={optIdx}
+                                  type="button"
+                                  onClick={() => handleUpdateFillAnswer(q.id, { selectedOption: opt })}
+                                  className={`p-3 rounded-xl text-xs text-left font-semibold border transition-all flex items-center justify-between ${
+                                    isSelected
+                                      ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <span>{opt}</span>
+                                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
+                                  }`}>
+                                    {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* TEXT RESPONSE QUESTION */}
+                        {q.questionType === 'text' && (
+                          <div className="pt-2">
+                            <textarea
+                              rows={3}
+                              placeholder="Type your feedback, detailed observations, or suggestions here..."
+                              value={ans.textResponse || ''}
+                              onChange={e => handleUpdateFillAnswer(q.id, { textResponse: e.target.value })}
+                              className="w-full p-3 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Form Footer */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
                   <button
-                    onClick={() => setFacultySubTab('new')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                      facultySubTab === 'new'
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    type="button"
+                    onClick={() => setSelectedFormForFill(null)}
+                    disabled={submittingFeedback}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>New Feedback</span>
+                    Cancel
                   </button>
                   <button
-                    onClick={() => setFacultySubTab('history')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                      facultySubTab === 'history'
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    type="button"
+                    onClick={handleSubmitFeedbackAnswers}
+                    disabled={submittingFeedback}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition-colors"
                   >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>My Submissions ({facultyFeedbackSubmissions.length})</span>
+                    {submittingFeedback ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Submitting Feedback...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Submit College Feedback</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-
-              {/* Alerts */}
-              {facultyFeedbackMsg && (
-                <div
-                  className={`mt-4 p-4 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 ${
-                    facultyFeedbackMsg.type === 'success'
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border border-rose-200 text-rose-800'
-                  }`}
-                >
-                  <span>{facultyFeedbackMsg.text}</span>
-                  <button onClick={() => setFacultyFeedbackMsg(null)} className="underline hover:no-underline">
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {/* Sub-View: New Feedback Form */}
-              {facultySubTab === 'new' && (
-                <form onSubmit={handleSubmitFacultyFeedback} className="mt-6 space-y-5">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Subject / Course */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Subject / Course Name <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={facultySubject}
-                        onChange={e => setFacultySubject(e.target.value)}
-                        placeholder="e.g. Data Structures & Algorithms, Operating Systems"
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                      />
-                    </div>
-
-                    {/* Faculty Name (Optional) */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Faculty Name <span className="text-slate-400 font-normal">(Optional if known)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={facultyName}
-                        onChange={e => setFacultyName(e.target.value)}
-                        placeholder="e.g. Dr. Ramesh Kumar / Course Instructor"
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                      />
-                    </div>
-
-                    {/* Department */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Academic Department <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={facultyDept}
-                        onChange={e => setFacultyDept(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white"
-                      >
-                        <option value="CSE">Computer Science & Engineering (CSE)</option>
-                        <option value="AIDS">Artificial Intelligence & Data Science (AI&DS)</option>
-                        <option value="AIML">AI & Machine Learning (AI&ML)</option>
-                        <option value="ECE">Electronics & Communication (ECE)</option>
-                        <option value="EEE">Electrical & Electronics (EEE)</option>
-                        <option value="MECH">Mechanical Engineering (MECH)</option>
-                        <option value="CIVIL">Civil Engineering (CIVIL)</option>
-                        <option value="IT">Information Technology (IT)</option>
-                        <option value="BSH">Basic Sciences & Humanities (BSH)</option>
-                      </select>
-                    </div>
-
-                    {/* Feedback Category */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Feedback Category <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={facultyCategory}
-                        onChange={e => setFacultyCategory(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white"
-                      >
-                        <option value="Teaching Quality & Clarity">Teaching Quality & Clarity</option>
-                        <option value="Syllabus Coverage Pace">Syllabus Coverage Pace</option>
-                        <option value="Doubts Clarification & Mentorship">Doubts Clarification & Mentorship</option>
-                        <option value="Evaluation & Internal Marks Fairness">Evaluation & Internal Marks Fairness</option>
-                        <option value="Laboratory & Practical Guidance">Laboratory & Practical Guidance</option>
-                        <option value="Classroom Discipline & Regularity">Classroom Discipline & Regularity</option>
-                        <option value="Other Academic Concern">Other Academic Concern</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Urgency & Confidentiality */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Urgency & Confidentiality Level
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {[
-                        {
-                          val: 'Standard',
-                          label: 'Standard Academic Feedback',
-                          desc: 'Shared with HOD for routine curriculum review',
-                        },
-                        {
-                          val: 'Urgent',
-                          label: 'Urgent Academic Concern',
-                          desc: 'Requires prompt attention before upcoming exams',
-                        },
-                        {
-                          val: 'Confidential',
-                          label: 'Strictly Confidential',
-                          desc: 'Restricted to Principal & Dean of Academics',
-                        },
-                      ].map(opt => (
-                        <div
-                          key={opt.val}
-                          onClick={() => setFacultyConfidentiality(opt.val as any)}
-                          className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                            facultyConfidentiality === opt.val
-                              ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
-                              : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
-                          }`}
-                        >
-                          <p className="text-xs font-bold text-slate-900">{opt.label}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Feedback Title */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Brief Subject / Summary <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={facultyTitle}
-                      onChange={e => setFacultyTitle(e.target.value)}
-                      placeholder="e.g. Need more practical problem-solving sessions in Algorithms"
-                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                    />
-                  </div>
-
-                  {/* Detailed Description */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Detailed Remarks & Suggestions <span className="text-rose-500">*</span>
-                    </label>
-                    <textarea
-                      required
-                      rows={4}
-                      value={facultyDescription}
-                      onChange={e => setFacultyDescription(e.target.value)}
-                      placeholder="Please provide specific constructive details so the department can address the matter effectively..."
-                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                    />
-                  </div>
-
-                  {/* Submit Button */}
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setFacultySubTab('history')}
-                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submittingFaculty}
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition-colors"
-                    >
-                      {submittingFaculty ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Submitting...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Submit to Department HOD</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Sub-View: Feedback History / Status Tracking */}
-              {facultySubTab === 'history' && (
-                <div className="mt-6 space-y-4">
-                  {facultyFeedbackSubmissions.length === 0 ? (
-                    <EmptyState
-                      title="No Faculty Feedback Submitted"
-                      description="You have not submitted any faculty feedback yet. Click 'New Feedback' above to share academic observations."
-                    />
-                  ) : (
-                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                      {facultyFeedbackSubmissions.map(item => (
-                        <div key={item.id} className="p-4 hover:bg-slate-50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[11px] font-bold text-slate-500">{item.id}</span>
-                              <span className="text-xs font-bold text-slate-900">{item.title}</span>
-                            </div>
-                            <p className="text-xs text-slate-600 line-clamp-2">{item.description}</p>
-                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
-                              <span>Submitted: {new Date(item.createdAt).toLocaleDateString()}</span>
-                              <span>•</span>
-                              <span>{item.location}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-                            <StatusBadge status={item.status} />
-                            <PriorityBadge priority={item.priority} />
-                            <button
-                              onClick={() => setSelectedSubmissionForModal(item)}
-                              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View Response</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
@@ -1866,18 +2102,41 @@ export const ParentDashboard: React.FC = () => {
                   />
                 ) : (
                   <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                    {notifications.map(n => (
-                      <div key={n.id} className="p-4 hover:bg-slate-50 transition-colors flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                          <Bell className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-slate-900">{n.title}</p>
-                          <p className="text-xs text-slate-600 mt-0.5">{n.message}</p>
-                          <p className="text-[10px] text-slate-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    ))}
+                    {notifications.map(n => {
+                      const isFeedbackNotif = n.title.includes('Feedback') || (n.submissionId && n.submissionId.startsWith('FB-'));
+                      return (
+                          <div key={n.id} className="p-4 hover:bg-slate-50 transition-colors flex items-start gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                              isFeedbackNotif ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'
+                            }`}>
+                              {isFeedbackNotif ? <ClipboardList className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-bold text-slate-900">{n.title}</p>
+                                {isFeedbackNotif && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700">
+                                    Survey
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-600 mt-0.5">{n.message}</p>
+                              <div className="flex items-center justify-between mt-2">
+                                <p className="text-[10px] text-slate-400">{new Date(n.createdAt).toLocaleString()}</p>
+                                {isFeedbackNotif && (
+                                  <button
+                                    onClick={() => handleOpenFeedbackFromNotification(n.submissionId)}
+                                    className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg flex items-center gap-1 transition-colors"
+                                  >
+                                    <span>Open Feedback Form</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                    })}
                   </div>
                 )}
               </div>
@@ -1885,77 +2144,7 @@ export const ParentDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 7: WARD REPORTS (Secondary Reference Tab) */}
-        {activeTab === 'ward_reports' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-slate-700" />
-                    Submissions Logged by Ward ({selectedWard?.studentRollNumber})
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Reference archive of campus issues and suggestions submitted directly by your child.
-                  </p>
-                </div>
-                <div className="text-xs text-slate-500">
-                  Total Reports: <strong className="text-slate-900 font-bold">{wardSubmissions.length}</strong>
-                </div>
-              </div>
-
-              {selectedWard?.verificationStatus !== 'VERIFIED' ? (
-                <div className="p-8 text-center">
-                  <Lock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-slate-700">Ward Access Restricted</p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Your link with {selectedWard?.studentRollNumber} is pending college administration verification.
-                  </p>
-                </div>
-              ) : wardSubmissions.length === 0 ? (
-                <EmptyState
-                  title="No Reports Submitted by Ward"
-                  description="Your child has not logged any campus issues or improvement requests."
-                />
-              ) : (
-                <div className="mt-6 divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                  {wardSubmissions.map(item => (
-                    <div key={item.id} className="p-4 hover:bg-slate-50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-[11px] font-bold text-slate-500">{item.id}</span>
-                          <span className="text-xs font-bold text-slate-900">{item.title}</span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                            {item.type}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 line-clamp-2">{item.description}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
-                          <span>Reported on: {new Date(item.createdAt).toLocaleDateString()}</span>
-                          <span>•</span>
-                          <span>{item.location}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-                        <StatusBadge status={item.status} />
-                        <PriorityBadge priority={item.priority} />
-                        <button
-                          onClick={() => setSelectedSubmissionForModal(item)}
-                          className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Details</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </main>
+        </main>
 
       {/* Submission Detail Modal */}
       {selectedSubmissionForModal && (
@@ -1963,6 +2152,108 @@ export const ParentDashboard: React.FC = () => {
           submission={selectedSubmissionForModal}
           onClose={() => setSelectedSubmissionForModal(null)}
         />
+      )}
+
+      {/* FEEDBACK SUBMISSION CONFIRMATION MODAL */}
+      {feedbackSuccessModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Feedback Submitted Successfully</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Thank you for contributing your perspectives on <strong>"{feedbackSuccessModal.title}"</strong>.
+                Your feedback has been securely routed to the College Management Committee (CMC) for institutional review.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setFeedbackSuccessModal(null);
+                setFeedbackStatusTab('submitted');
+                loadFeedbackForms();
+              }}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+            >
+              Return to Feedback Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW SUBMITTED RESPONSE MODAL */}
+      {selectedSubmittedView && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Your Submitted Feedback
+                </span>
+                <h3 className="text-base font-bold text-slate-900 mt-1">{selectedSubmittedView.form.title}</h3>
+                {selectedSubmittedView.myResponse && (
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Submitted on: {new Date(selectedSubmittedView.myResponse.submittedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedSubmittedView(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              {selectedSubmittedView.form.questions?.map((q, idx) => {
+                const ans = selectedSubmittedView.myResponse?.answers.find(a => a.questionId === q.id);
+                return (
+                  <div key={q.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-1.5">
+                    <p className="text-xs font-bold text-slate-800">
+                      {idx + 1}. {q.questionText}
+                    </p>
+                    <div className="pt-1 text-xs">
+                      {ans?.ratingValue ? (
+                        <div className="flex items-center gap-1.5 text-amber-600 font-bold">
+                          <span>{ans.ratingValue} / 5 Stars</span>
+                          <div className="flex items-center text-amber-400">
+                            {[1, 2, 3, 4, 5].map(s => (
+                              <Star
+                                key={s}
+                                className={`w-3.5 h-3.5 ${s <= ans.ratingValue ? 'fill-amber-400' : 'text-slate-300'}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : ans?.selectedOption ? (
+                        <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 font-semibold border border-indigo-100">
+                          {ans.selectedOption}
+                        </span>
+                      ) : ans?.textResponse ? (
+                        <p className="p-2.5 rounded-lg bg-white border border-slate-200 text-slate-800 font-medium italic">
+                          "{ans.textResponse}"
+                        </p>
+                      ) : (
+                        <span className="text-slate-400 italic">No answer provided</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setSelectedSubmittedView(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Link Another Student Modal */}

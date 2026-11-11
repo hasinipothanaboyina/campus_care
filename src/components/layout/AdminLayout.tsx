@@ -12,6 +12,7 @@ import {
   Sparkles,
   Bell,
   Settings as SettingsIcon, Users,
+  ClipboardList,
 } from 'lucide-react';
 import { useCampusCare } from '../../context/CampusCareContext';
 
@@ -41,6 +42,7 @@ export const AdminLayout: React.FC = () => {
       badgeColor: 'bg-amber-600',
     },
     { label: 'Suggestions & Requests', path: '/admin/suggestions-requests', icon: Lightbulb },
+    { label: 'College Feedback', path: '/admin/feedback', icon: ClipboardList },
     { label: 'Resolution Mgmt', path: '/admin/resolution-management', icon: CheckSquare },
     { label: 'CMC Insights', path: '/admin/cmc-insights', icon: Sparkles },
     { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },

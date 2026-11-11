@@ -33,6 +33,7 @@ import { AnalyticsPage } from './pages/admin/AnalyticsPage';
 import { AdminNotificationsPage } from './pages/admin/AdminNotificationsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { StudentManagementPage } from './pages/admin/StudentManagementPage';
+import { AdminFeedbackManagementPage } from './pages/admin/AdminFeedbackManagementPage';
 import { ParentDashboard } from './pages/parent/ParentDashboard';
 import { ParentLinkStatusPage } from './pages/parent/ParentLinkStatusPage';
 import { useAuth } from './context/AuthContext';
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="priority-queue" element={<PriorityQueuePage />} />
               <Route path="recurring-issues" element={<RecurringIssuesPage />} />
               <Route path="suggestions-requests" element={<SuggestionsRequestsAdminPage />} />
+              <Route path="feedback" element={<AdminFeedbackManagementPage />} />
               <Route path="cmc-insights" element={<CMCInsightsPage />} />
               <Route path="resolution-management" element={<ResolutionManagementPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
