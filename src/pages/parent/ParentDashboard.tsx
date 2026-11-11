@@ -20,6 +20,9 @@ import { SubmissionDetailModal } from '../SubmissionDetailModal';
 import { supabase } from '../../lib/supabase';
 import {
   ClipboardList,
+  Star,
+  ArrowRight,
+  X,
   Users,
   Shield,
   ShieldCheck,
@@ -325,12 +328,7 @@ export const ParentDashboard: React.FC = () => {
     return links.find(l => l.id === selectedLinkId) || null;
   }, [links, selectedLinkId]);
 
-  // Auto-set department when ward changes
-  useEffect(() => {
-    if (selectedWard?.studentDepartment) {
-      setFacultyDept(selectedWard.studentDepartment);
-    }
-  }, [selectedWard]);
+
 
   // Load Parent's Own Submissions (Faculty Feedback + College Concerns)
   const loadParentSubmissions = useCallback(async () => {
@@ -612,82 +610,6 @@ export const ParentDashboard: React.FC = () => {
       });
     } finally {
       setSubmittingLink(false);
-    }
-  };
-
-  // Submit Faculty Feedback Form
-  const handleSubmitFacultyFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !facultySubject.trim() || !facultyTitle.trim() || !facultyDescription.trim()) {
-      setFacultyFeedbackMsg({ text: 'Please fill in all required fields (Subject, Title, and Description).', type: 'error' });
-      return;
-    }
-
-    setSubmittingFaculty(true);
-    setFacultyFeedbackMsg(null);
-
-    const subId = `CC-FB-${Date.now().toString().slice(-6)}`;
-    const wardRoll = selectedWard?.studentRollNumber || 'N/A';
-    const dept = facultyDept || selectedWard?.studentDepartment || 'Academics';
-
-    const fullDescription = [
-      `Course / Subject: ${facultySubject.trim()}`,
-      `Faculty Name: ${facultyName.trim() || 'Not specified'}`,
-      `Department: ${dept}`,
-      `Category: ${facultyCategory}`,
-      `Confidentiality / Urgency: ${facultyConfidentiality}`,
-      `Linked Student Roll: ${wardRoll}`,
-      '----------------------------------------',
-      facultyDescription.trim(),
-    ].join('\n');
-
-    const urgencyVal: Urgency =
-      facultyConfidentiality === 'Urgent' ? 'High' : facultyConfidentiality === 'Confidential' ? 'High' : 'Medium';
-
-    try {
-      const { data, error } = await supabase.from('submissions').insert([
-        {
-          id: subId,
-          type: 'issue',
-          title: `[Faculty Feedback] ${facultySubject.trim()}: ${facultyTitle.trim()}`,
-          description: fullDescription,
-          category: 'Classroom',
-          building: dept,
-          room: facultyName.trim() || 'Faculty Desk',
-          location: `${dept} Department`,
-          urgency: urgencyVal,
-          priority: urgencyVal,
-          priority_score: urgencyVal === 'High' ? 75 : 50,
-          status: 'Submitted',
-          student_id: user.id,
-          student_name: `${user.fullName} (Parent of ${wardRoll})`,
-          student_roll_number: wardRoll,
-          student_department: dept,
-        },
-      ]).select();
-
-      if (error) throw error;
-
-      setFacultyFeedbackMsg({
-        text: `Faculty feedback submitted successfully (ID: ${subId}). It has been routed to the Department HOD for confidential review.`,
-        type: 'success',
-      });
-
-      // Clear Form
-      setFacultySubject('');
-      setFacultyName('');
-      setFacultyTitle('');
-      setFacultyDescription('');
-      await loadParentSubmissions();
-      setFacultySubTab('history');
-    } catch (err: any) {
-      console.error('Error submitting faculty feedback:', err);
-      setFacultyFeedbackMsg({
-        text: err.message || 'Failed to submit faculty feedback. Please try again.',
-        type: 'error',
-      });
-    } finally {
-      setSubmittingFaculty(false);
     }
   };
 
@@ -1190,18 +1112,18 @@ export const ParentDashboard: React.FC = () => {
                 <div className="space-y-2.5 pt-1">
                   <div
                     onClick={() => {
-                      setActiveTab('faculty_feedback');
-                      setFacultySubTab('new');
+                      setActiveTab('college_feedback');
+                      setSelectedFormForFill(null);
                     }}
                     className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 cursor-pointer transition-all flex items-center justify-between"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                        <BookOpen className="w-4 h-4" />
+                        <ClipboardList className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-900">Faculty & Subject Feedback</p>
-                        <p className="text-[11px] text-slate-500">Share observations on teaching pace, doubt clarification, or practicals.</p>
+                        <p className="text-xs font-bold text-slate-900">College Feedback Surveys</p>
+                        <p className="text-[11px] text-slate-500">Participate in official surveys on college facilities, safety, transport & infrastructure.</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -2222,7 +2144,7 @@ export const ParentDashboard: React.FC = () => {
                             {[1, 2, 3, 4, 5].map(s => (
                               <Star
                                 key={s}
-                                className={`w-3.5 h-3.5 ${s <= ans.ratingValue ? 'fill-amber-400' : 'text-slate-300'}`}
+                                className={`w-3.5 h-3.5 ${s <= (ans?.ratingValue || 0) ? 'fill-amber-400' : 'text-slate-300'}`}
                               />
                             ))}
                           </div>
